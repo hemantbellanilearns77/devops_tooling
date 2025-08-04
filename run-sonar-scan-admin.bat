@@ -6,11 +6,14 @@ echo ☕ SonarCloud Scan Initiator — Dynamic Branch (Preflight + Preview)
 echo ===================================================
 :: Capture Start Time
 for /f %%t in ('powershell -command "Get-Date -Format 'HH:mm:ss'"') do set startTime=%%t
-timeout /t 3 >nul
+REM timeout /t 3 >nul
 :: Preserve Original Working Directory
 set "originalDir=%CD%"
 cd /d D:\GitHubRepos\udemy_lpa_javamasterclass
-
+:: === Set working directory ===
+cd /d "%~dp0.."
+set "REPO_ROOT=%CD%"
+echo REPO_ROOT %REPO_ROOT%
 :: Timestamp Setup
 for /f %%i in ('powershell -Command "Get-Date -Format yyyy-MM-dd--HH-mm"') do set timestamp=%%i
 
@@ -133,9 +136,15 @@ for /f "tokens=1,2 delims==" %%a in (.env) do (
 )
 :: Launch Scanner
 echo 🚀 Running SonarCloud scan — Branch: !BRANCH_NAME!
-call sonar-scanner -X ^
-  "-Dsonar.token=%SONAR_TOKEN%" ^
-  > "!logPath!" 2>&1
+set "SCANNER=%REPO_ROOT%\tools\sonar-scanner\sonar-scanner-7.1.0.4889-windows-x64\bin\sonar-scanner.bat"
+if exist "%SCANNER%" (
+  REM call "%SCANNER%" -X "-Dsonar.token=%SONAR_TOKEN%"
+  call "%SCANNER%" "-Dsonar.token=%SONAR_TOKEN%"
+) else (
+  echo ❌ sonar-scanner.bat not found at %SCANNER%
+  exit /b 1
+)
+REM call ../tools/sonar-scanner -X "-Dsonar.token=%SONAR_TOKEN%"
 
 echo ✅ Scan complete. Log saved to: !logPath!
 
