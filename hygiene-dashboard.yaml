@@ -19,15 +19,15 @@ jobs:
 
     steps:
 
-      - name: ⏱️ Capture Job Start Time
+      - name: ?? Capture Job Start Time
         id: start_time
         shell: bash
         run: echo "startTime=$(date +%s)" >> $GITHUB_OUTPUT
 
-      - name: 📥 Checkout Code
+      - name: ?? Checkout Code
         uses: actions/checkout@v4
 
-      - name: ☕ Setup JDK 24 (for JaCoCo + Compilation)
+      - name: ? Setup JDK 24 (for JaCoCo + Compilation)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -37,22 +37,22 @@ jobs:
       # DOWNLOAD TOOLS
       ##########################
 
-      - name: 📦 Download Checkstyle
+      - name: ?? Download Checkstyle
         run: |
           mkdir tools\checkstyle
           curl -L -o tools\checkstyle\checkstyle-10.26.1-all.jar https://github.com/checkstyle/checkstyle/releases/download/checkstyle-10.26.1/checkstyle-10.26.1-all.jar
 
-      - name: 📦 Download and Extract PMD
+      - name: ?? Download and Extract PMD
         run: curl -L -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.15.0/pmd-dist-7.15.0-bin.zip
         shell: bash
 
-      - name: 📦 Extract PMD
+      - name: ?? Extract PMD
         run: |
           mkdir tools\pmd
           powershell -Command "Expand-Archive -Path 'pmd.zip' -DestinationPath 'tools\pmd'"
         shell: cmd
 
-      - name: 📦 Download JaCoCo + JUnit Console
+      - name: ?? Download JaCoCo + JUnit Console
         run: |
           mkdir tools\jacoco-0.8.13\lib
           curl -L -o tools\jacoco-0.8.13\lib\jacocoagent.jar https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/0.8.13/org.jacoco.agent-0.8.13-runtime.jar
@@ -65,10 +65,10 @@ jobs:
       # RUN STATIC ANALYSIS
       ##########################
 
-      - name: 🧼 Run Checkstyle
+      - name: ?? Run Checkstyle
         run: scripts\run-checkstyle.bat
 
-      - name: 🧼 Run PMD
+      - name: ?? Run PMD
         run: scripts\run-pmd.bat
         shell: cmd
 
@@ -76,7 +76,7 @@ jobs:
       # COMPILE + JACOCO
       ##########################
 
-      - name: 🛠️ Compile Java Modules if Needed
+      - name: ??? Compile Java Modules if Needed
         shell: cmd
         run: |
           set "JAVA_HOME=%JAVA_HOME%"
@@ -90,7 +90,7 @@ jobs:
 
           if not exist "%OUT_PROD%\udemy_lpa_javamasterclass" (
             if not exist "%OUT_PROD%\misc_utils" (
-              echo ⚙ Compilation triggered
+              echo ? Compilation triggered
 
               rmdir /s /q "%OUT_PROD%" >nul 2>&1
               rmdir /s /q "%OUT_TEST%" >nul 2>&1
@@ -100,19 +100,19 @@ jobs:
               mkdir "%OUT_TEST%\udemy_lpa_javamasterclass"
               mkdir "%OUT_TEST%\misc_utils"
 
-              echo ✍ Compiling udemy_lpa_javamasterclass
+              echo ? Compiling udemy_lpa_javamasterclass
               dir /s /b "%SRC_MAIN%\*.java" > sources_main.txt
               javac --enable-preview --release 24 -encoding UTF-8 -d "%OUT_PROD%\udemy_lpa_javamasterclass" @sources_main.txt
 
-              echo ✍ Compiling misc_utils
+              echo ? Compiling misc_utils
               dir /s /b "%SRC_MISC%\*.java" > sources_misc.txt
               javac --enable-preview --release 24 -encoding UTF-8 -cp "%OUT_PROD%\udemy_lpa_javamasterclass" -d "%OUT_PROD%\misc_utils" @sources_misc.txt
 
-              echo ✍ Compiling tests (masterclass)
+              echo ? Compiling tests (masterclass)
               dir /s /b "%TEST_MAIN%\*.java" > sources_test_main.txt
               javac --enable-preview --release 24 -encoding UTF-8 -cp "%OUT_PROD%\udemy_lpa_javamasterclass;%OUT_PROD%\misc_utils;%JUNIT_JAR%" -d "%OUT_TEST%\udemy_lpa_javamasterclass" @sources_test_main.txt
 
-              echo ✍ Compiling tests (misc_utils)
+              echo ? Compiling tests (misc_utils)
               if exist "%TEST_MISC%" (
                 dir /s /b "%TEST_MISC%\*.java" > sources_test_misc.txt
                 javac --enable-preview --release 24 -encoding UTF-8 -cp "%OUT_PROD%\udemy_lpa_javamasterclass;%OUT_PROD%\misc_utils;%JUNIT_JAR%" -d "%OUT_TEST%\misc_utils" @sources_test_misc.txt
@@ -122,7 +122,7 @@ jobs:
             )
           )
 
-      - name: 🧪 Run JaCoCo Coverage
+      - name: ?? Run JaCoCo Coverage
         run: scripts\run-coverage-analysis.bat
         shell: cmd
 
@@ -130,7 +130,7 @@ jobs:
       # UPLOAD REPORTS
       ##########################
 
-      - name: ⬆️ Upload All Reports
+      - name: ?? Upload All Reports
         uses: actions/upload-artifact@v4
         with:
           name: hygiene-reports
@@ -142,7 +142,7 @@ jobs:
       # DOWNLOAD SONAR-SCANNER
       ##########################
 
-      - name: 📦 Download and Setup SonarScanner 7.1.0.4889
+      - name: ?? Download and Setup SonarScanner 7.1.0.4889
         shell: bash
         run: |
           curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-windows-x64.zip
@@ -154,7 +154,7 @@ jobs:
         ################################
         # RUN SONAR CLOUD ANALYSIS
       ################################
-      - name: 🔎 Run SonarCloud Scan (via batch)
+      - name: ?? Run SonarCloud Scan (via batch)
         if: success()
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -165,39 +165,42 @@ jobs:
       # FETCH SONARCLOUD INFO
       ##########################
 
-      - name: 🧠 Fetch SonarCloud Issue Count (OPEN)
+      - name: ?? Fetch SonarCloud Issue Count (OPEN)
         id: sonar_issues
         shell: pwsh
         run: |
+          Start-Sleep -Seconds 15
+          
           # Confirm if token is passed
           if (-not $env:SONAR_TOKEN) {
-            Write-Error "❌ SONAR_TOKEN is empty!"
+            Write-Error "? SONAR_TOKEN is empty!"
             exit 1
           }
 
           # Encode token correctly (with colon!)
           $encodedAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$env:SONAR_TOKEN:"))
-          Write-Host "🔐 Encoded Auth: $encodedAuth"
+          Write-Host "?? Encoded Auth: $encodedAuth"
 
           $headers = @{ Authorization = "Basic $encodedAuth" }
           $url = "https://sonarcloud.io/api/issues/search?issueStatuses=OPEN&ps=1&organization=hemantbellanilearns77&componentKeys=hemantbellanilearns77_udemy_lpa_javamasterclass"
 
-          Write-Host "📡 Calling SonarCloud API: $url"
-
+          Write-Host "?? Calling SonarCloud API: $url"
+          
           try {
+          
             $response = Invoke-WebRequest -Uri $url -Method Get
             $body = $response.Content
 
             if ($body -match '"total"\s*:\s*(\d+)') {
               $totalIssues = $matches[1]
-              Write-Host "✅ Total SonarCloud Issues (OPEN): $totalIssues"
+              Write-Host "? Total SonarCloud Issues (OPEN): $totalIssues"
               "sonarIssueCount=$totalIssues" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
             } else {
-              Write-Error "❌ Could not extract issue count from response body: $body"
+              Write-Error "? Could not extract issue count from response body: $body"
               exit 1
             }
           } catch {
-            Write-Error "❌ API call failed: $_"
+            Write-Error "? API call failed: $_"
             exit 1
           }
         env:
@@ -207,7 +210,7 @@ jobs:
       # SUMMARY SECTION
       ##########################
 
-      - name: 📊 Add Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar Issues)
+      - name: ?? Add Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar Issues)
         id: metrics
         shell: pwsh
         run: |
@@ -227,16 +230,16 @@ jobs:
           $blocks = 20
           $filled = [math]::Round($blocks * $percent / 100)
           $empty = $blocks - $filled
-          return ('█' * $filled) + ('░' * $empty)
+          return ('�' * $filled) + ('�' * $empty)
           }
           
           # Sparkline-styled emoji indicator
           if ($jacocoCoverage -ge 50) {
-          $coverageEmoji = "🟢"
+          $coverageEmoji = "??"
           } elseif ($jacocoCoverage -ge 20) {
-          $coverageEmoji = "🟡"
+          $coverageEmoji = "??"
           } else {
-          $coverageEmoji = "🔴"
+          $coverageEmoji = "??"
           }
           
           $coverageBar = Get-AsciiBar $jacocoCoverage
@@ -286,7 +289,7 @@ jobs:
           
           
           # === Writing table ===
-          echo "### 🧪 Hygiene Summary (Checkstyle + PMD + JaCoCo)" >> $env:GITHUB_STEP_SUMMARY
+          echo "### ?? Hygiene Summary (Checkstyle + PMD + JaCoCo)" >> $env:GITHUB_STEP_SUMMARY
           echo "| **Metric**                     | **Value**        |" >> $env:GITHUB_STEP_SUMMARY
           echo "|-------------------------------|------------------|" >> $env:GITHUB_STEP_SUMMARY
           echo "| Checkstyle Violations         | $checkstyleViolations |" >> $env:GITHUB_STEP_SUMMARY
@@ -295,20 +298,20 @@ jobs:
           echo "| Code Coverage %               | $jacocoCoverage% $coverageEmoji |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Coverage Visual               | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Sonar Issues (Total)          | ${{ steps.sonar_issues.outputs.sonarIssueCount }} |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| 🔴 BLOCKER                    | $blocker            |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| 🟠 CRITICAL                   | $critical           |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| 🟡 MAJOR                      | $major              |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| 🔵 MINOR                      | $minor              |" >> $env:GITHUB_STEP_SUMMARY
-          echo "| ⚪ INFO                       | $info               |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| ?? BLOCKER                    | $blocker            |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| ?? CRITICAL                   | $critical           |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| ?? MAJOR                      | $major              |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| ?? MINOR                      | $minor              |" >> $env:GITHUB_STEP_SUMMARY
+          echo "| ? INFO                       | $info               |" >> $env:GITHUB_STEP_SUMMARY
           echo "" >> $env:GITHUB_STEP_SUMMARY
           
           # === SonarCloud Dashboard Link ===
           $projectKey = $env:SONAR_PROJECT_KEY
           $branch = "${{ github.ref_name }}"
           $sonarOverallCodeDashBoardUrl = "https://sonarcloud.io/summary/overall?id=$projectKey&branch=$branch"
-          echo "🔗 [View SonarCloud Overall Code Dashboard]($sonarOverallCodeDashBoardUrl)" >> $env:GITHUB_STEP_SUMMARY
+          echo "?? [View SonarCloud Overall Code Dashboard]($sonarOverallCodeDashBoardUrl)" >> $env:GITHUB_STEP_SUMMARY
           $sonarOpenIssuesDashboardUrl= "https://sonarcloud.io/project/issues?issueStatuses=OPEN%2CCONFIRMED&id=$projectKey"
-          echo "🔗 [View SonarCloud Issues Breakdown Dashboard]($sonarOpenIssuesDashboardUrl)" >> $env:GITHUB_STEP_SUMMARY
+          echo "?? [View SonarCloud Issues Breakdown Dashboard]($sonarOpenIssuesDashboardUrl)" >> $env:GITHUB_STEP_SUMMARY
           
           # === Output variables ===                    
           
@@ -328,7 +331,7 @@ jobs:
       # FULL CLEANUP
       ##########################
 
-      - name: 🧹 Full Cleanup
+      - name: ?? Full Cleanup
         shell: cmd
         run: |
           echo Cleaning up temp artifacts
@@ -336,12 +339,12 @@ jobs:
           rmdir /s /q logs >nul 2>&1
           rmdir /s /q reports >nul 2>&1
           del /q sources_*.txt >nul 2>&1
-          echo ✅ Cleanup done 
+          echo ? Cleanup done 
 
       ###################################################################
       # CLEANUP VERIFICATION using (dir /s /b this is disabled for now)
       ##################################################################
-      - name: 📂 List Remaining Files
+      - name: ?? List Remaining Files
         shell: cmd
         run: |
           echo === POST-CLEANUP DIRECTORY TREE ===
@@ -351,7 +354,7 @@ jobs:
       # DEMONSTRATES, FLAG BASED EXECUTION
       ##################################################################
 
-      - name: 🗣️ Say Hello (unless skipped)
+      - name: ??? Say Hello (unless skipped)
         if: env.SKIP_ECHO != 'true'
         run: echo Hello, world!
         shell: cmd
@@ -360,7 +363,7 @@ jobs:
       # EXTRACT COMMIT STATS
       ##########################
 
-      - name: 📦 Extract Commit Info (Windows PowerShell)
+      - name: ?? Extract Commit Info (Windows PowerShell)
         id: commit_info
         shell: pwsh
         run: |
@@ -393,7 +396,7 @@ jobs:
       # Calculate Execution Metrics
       ##############################
 
-      - name: ⏱️ Calculate Duration and Export Timing
+      - name: ?? Calculate Duration and Export Timing
         id: calculate-duration-and-export-timing
         shell: pwsh
         env:
@@ -419,7 +422,7 @@ jobs:
       # Email Success Summary
       ##########################
 
-      - name: 📬 Email Summary
+      - name: ?? Email Summary
         uses: dawidd6/action-send-mail@v3
         env:
           CHECKSTYLE_VIOLATIONS: ${{ steps.metrics.outputs.checkstyleCount }}
@@ -437,9 +440,9 @@ jobs:
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
           subject: >-
-            ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILURE' }} —
+            ${{ job.status == 'success' && '? SUCCESS' || '? FAILURE' }} �
             Java MasterClass Hygiene Check for ${{ github.repository }} (main)
-            ${{ steps.metrics.outputs.jacocoPercent && steps.metrics.outputs.jacocoPercent < '5' && '(⚠️ Coverage Below Threshold)' || '' }}
+            ${{ steps.metrics.outputs.jacocoPercent && steps.metrics.outputs.jacocoPercent < '5' && '(?? Coverage Below Threshold)' || '' }}
 
           to: hemantbellanilearns77@gmail.com
           from: GitHub Hygiene Bot <hemantbellanilearns77@gmail.com>
@@ -447,44 +450,44 @@ jobs:
             <p>Hi Hemant,</p>
             <p>A GitHub Hygiene Check (CheckStyle, PMD, JaCoCo, SonarCloud) was completed on <strong>${{ github.repository }}</strong> (branch: <code>main</code>).</p>
             
-            <p>🧼 <strong>Hygiene Summary:</strong></p>
+            <p>?? <strong>Hygiene Summary:</strong></p>
             <ul>
-              <li>✅ Checkstyle Violations: <strong>${{ steps.metrics.outputs.checkstyleCount }}</strong></li>
-              <li>✅ PMD Violations: <strong>${{ steps.metrics.outputs.pmdCount }}</strong></li>
-              <li>📊 Code Coverage: <strong>${{ steps.metrics.outputs.jacocoPercent }}</strong></li>
-              <li>📉 Coverage Visual: <code>${{ steps.metrics.outputs.coverageBar }}</code></li>
-              <li>🧠 SonarCloud Total Issues: <strong>${{ steps.sonar_issues.outputs.sonarIssueCount }}</strong></li>
-              <li>🔗 <a href="${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}">View SonarCloud Overall Code Dashboard</a></li>
+              <li>? Checkstyle Violations: <strong>${{ steps.metrics.outputs.checkstyleCount }}</strong></li>
+              <li>? PMD Violations: <strong>${{ steps.metrics.outputs.pmdCount }}</strong></li>
+              <li>?? Code Coverage: <strong>${{ steps.metrics.outputs.jacocoPercent }}</strong></li>
+              <li>?? Coverage Visual: <code>${{ steps.metrics.outputs.coverageBar }}</code></li>
+              <li>?? SonarCloud Total Issues: <strong>${{ steps.sonar_issues.outputs.sonarIssueCount }}</strong></li>
+              <li>?? <a href="${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}">View SonarCloud Overall Code Dashboard</a></li>
             </ul>
             
-            <p>🛑 <strong>SonarCloud Severity Breakdown:</strong></p>
+            <p>?? <strong>SonarCloud Severity Breakdown:</strong></p>
             <ul>
-            <li>🔴 BLOCKER: <strong>${{ steps.metrics.outputs.sonarBlocker }}</strong></li>
-            <li>🟠 CRITICAL: <strong>${{ steps.metrics.outputs.sonarCritical }}</strong></li>
-            <li>🟡 MAJOR: <strong>${{ steps.metrics.outputs.sonarMajor }}</strong></li>
-            <li>🔵 MINOR: <strong>${{ steps.metrics.outputs.sonarMinor }}</strong></li>
-            <li>⚪ INFO: <strong>${{ steps.metrics.outputs.sonarInfo }}</strong></li>
-            <li>🔗 <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}">View SonarCloud Issues Breakdown</a></li>
+            <li>?? BLOCKER: <strong>${{ steps.metrics.outputs.sonarBlocker }}</strong></li>
+            <li>?? CRITICAL: <strong>${{ steps.metrics.outputs.sonarCritical }}</strong></li>
+            <li>?? MAJOR: <strong>${{ steps.metrics.outputs.sonarMajor }}</strong></li>
+            <li>?? MINOR: <strong>${{ steps.metrics.outputs.sonarMinor }}</strong></li>
+            <li>? INFO: <strong>${{ steps.metrics.outputs.sonarInfo }}</strong></li>
+            <li>?? <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}">View SonarCloud Issues Breakdown</a></li>
             </ul>
-            <p>📦 <strong>Artifacts:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Download from workflow run</a></p>
-            <p>🧑‍💻 <strong>Last Commit Info:</strong></p>
+            <p>?? <strong>Artifacts:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Download from workflow run</a></p>
+            <p>????? <strong>Last Commit Info:</strong></p>
             <ul>
               <li><strong>SHA:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}"><code>${{ steps.commit_info.outputs.SHORT_SHA }}</code></a></li>
               <li><strong>Message:</strong> <em>${{ steps.commit_info.outputs.COMMIT_MSG }}</em></li>
               <li><strong>Author:</strong> ${{ steps.commit_info.outputs.COMMIT_AUTHOR }}</li>
               <li><strong>Date:</strong> ${{ steps.commit_info.outputs.COMMIT_DATE }} <span style="color:gray;">(${{ steps.commit_info.outputs.COMMIT_AGO }})</span></li>
-              <li><strong>🔗 View Commit on GitHub:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}">Open Commit</a></li>
-              <li><strong>🔗 View Commit:</strong>
+              <li><strong>?? View Commit on GitHub:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}">Open Commit</a></li>
+              <li><strong>?? View Commit:</strong>
                   <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}">Open on GitHub</a>
               </li>
             </ul>
-            <p><strong>🕒 Job Execution:</strong></p>
+            <p><strong>?? Job Execution:</strong></p>
              <ul>
                 <li><strong>Start Time:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.startTime }}</li>
                 <li><strong>End Time:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.endTime }}</li>
                 <li><strong>Job Duration:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.formattedDuration }}</li>
               </ul>
             <hr>
-            <p><em>🤖 This is an automated message from a GitHub Actions workflow.<br>
+            <p><em>?? This is an automated message from a GitHub Actions workflow.<br>
             Please do not reply.</em></p> 
 
