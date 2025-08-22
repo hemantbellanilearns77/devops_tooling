@@ -1,8 +1,7 @@
-#name: Checkstyle + PMD
-#
-#on:
-#  push:
-#    branches: [main]
+name: Checkstyle + PMD
+on:
+  workflow_dispatch: # run manually
+#  branches: [main]
 #
 #jobs:
 #  static-analysis:
