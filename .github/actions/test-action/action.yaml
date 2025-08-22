@@ -1,0 +1,27 @@
+# .github/actions/process-name/action.yml
+name: "Process Name"
+description: "Takes a name, processes it, and outputs variants"
+
+inputs:
+  username:
+    description: "The name to process"
+    required: true
+
+outputs:
+  originalName:
+    description: "Original input name"
+    value: ${{ steps.upper.outputs.originalName }}
+  upperName:
+    description: "Uppercased name"
+    value: ${{ steps.upper.outputs.upperName }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Uppercase the name
+      id: upper
+      shell: bash
+      run: |
+        echo "upperName=$(echo "${{ inputs.username }}" | tr '[:lower:]' '[:upper:]')" >> $GITHUB_OUTPUT
+        echo "originalName=${{ inputs.username }}" >> $GITHUB_OUTPUT
+
