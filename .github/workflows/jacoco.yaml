@@ -1,8 +1,6 @@
-# name: JaCoCo Coverage
-
-# on:
-  # push:
-    # branches: [main]
+name: JaCoCo Coverage
+on:
+  workflow_dispatch: # run manually
 
 # jobs:
   # jacoco-coverage:
