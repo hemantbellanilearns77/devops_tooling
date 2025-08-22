@@ -1,9 +1,6 @@
-#name: Run PMD
-#
-#on:
-#  push:
-#    branches:
-#      - main
+name: Run PMD
+on:
+  workflow_dispatch: # run manually
 #
 #jobs:
 #  pmd:
