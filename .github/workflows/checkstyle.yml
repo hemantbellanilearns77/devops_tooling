@@ -1,9 +1,6 @@
-#name: Run Checkstyle
-#
-#on:
-#  push:
-#    branches:
-#      - main
+name: Run Checkstyle
+on:
+  workflow_dispatch: # run manually
 #
 #jobs:
 #  checkstyle:
