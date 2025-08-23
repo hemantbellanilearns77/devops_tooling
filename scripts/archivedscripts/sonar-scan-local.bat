@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 
 echo ===================================================
-echo ☕ SonarCloud Scan Initiator — Dynamic Branch (Preflight + Preview)
+echo ☕ SonarCloud Scan Initiator — Dynamic Branch (Preflight and Preview)
 echo ===================================================
 :: Capture Start Time
 for /f %%t in ('powershell -command "Get-Date -Format 'HH:mm:ss'"') do set startTime=%%t
