@@ -1,19 +1,24 @@
 name: 📊 Hygiene Checks Pipeline
 on:
-   workflow_dispatch: # run manually
+  workflow_dispatch: # run manually
   # schedule:
-  #  - cron: '41 04 * * 5' # runs at 1025 hours IST or 0441 hours UTC every friday
-
+    # - cron: '45 06 * * 1-4' # Runs 12:15 PM IST  every WeekDay excluding Friday
+    # - cron: '38 7 * * *' # Runs 1:08 PM IST  every Day
+  # push:
+    # branches:
+    # - main
 jobs:
   hygiene-checks:
     name: Hygiene Checks - Checkstyle + PMD + JaCoCo + Sonar
     runs-on: windows-latest
     env:
       MODULE_PATHS: |
-        udemy_lpa_javamasterclass=src/main/java/com/hb/study/udemy_lpa_javamasterclass
-        misc_utils=misc_utils/src/main/java/com/hb/study/misc_utils
-        udemy_lpa_javamasterclass=src/test/java/com/hb/study/udemy_lpa_javamasterclass
-        misc_utils=misc_utils/src/test/java/com/hb/study/misc_utils
+        udemy_lpa_javamasterclass_main=src/main/java/com/hb/study/udemy_lpa_javamasterclass
+        misc_utils_main=misc_utils/src/main/java/com/hb/study/misc_utils
+        udemy_lpa_javamasterclass_test=src/test/java/com/hb/study/udemy_lpa_javamasterclass
+        misc_utils_test=misc_utils/src/test/java/com/hb/study/misc_utils
+      TRIGGER_TYPE: ${{ github.event_name }}
+      TRIGGER_BRANCH: ${{ github.ref_name }}
       JACOCO_MIN_COVERAGE: 9
       CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS: 12006
       CHECKSTYLE_MAX_VIOLATIONS: 12000
@@ -26,14 +31,6 @@ jobs:
     steps:
 
       ####################################################
-          # CAPTURE START TIME OF GITHUB ACTION's JOB
-      ####################################################
-      - name: ?? Capture Job Start Time
-        id: start_time
-        shell: bash
-        run: echo "startTime=$(date +%s)" >> $GITHUB_OUTPUT
-
-      ####################################################
                 # CHECKOUT CODE COMMITTED
       ####################################################
       - name: ?? Checkout Code
@@ -42,38 +39,24 @@ jobs:
           fetch-depth: 0   # fetches all history, not just 1 commit
 
       ####################################################
-                  # EXTRACT COMMIT STATS
+      # CAPTURE START TIME OF GITHUB ACTION's JOB
+      ####################################################
+      - name: Call Start Time Action
+        id: start_time
+        uses: ./.github/actions/setup-starttime
+
+      ####################################################
+            # EXTRACT COMMIT STATS and TRIGGER INFO
       ####################################################
 
       - name: ?? Extract Commit Info (Windows PowerShell)
-        id: commit_info
-        shell: pwsh
-        run: |
-          $shortSha = git rev-parse --short HEAD
-          $fullSha = git rev-parse HEAD
-          $msg = git log -1 --pretty=%s
-          $author = git log -1 --pretty='%an'
-          $date = git log -1 --date=iso-local --pretty='%cd'
-
-          $commitTs = git log -1 --pretty=%ct
-          $nowTs = [int][double]::Parse((Get-Date -UFormat %s))
-          $deltaMin = [math]::Floor(($nowTs - $commitTs) / 60)
-
-          if ($deltaMin -lt 1) {
-            $ago = "Just now"
-          } elseif ($deltaMin -eq 1) {
-            $ago = "1 minute ago"
-          } else {
-            $ago = "$deltaMin minutes ago"
-          }
-
-          "SHORT_SHA=$shortSha" >> $env:GITHUB_OUTPUT
-          "FULL_SHA=$fullSha" >> $env:GITHUB_OUTPUT
-          "COMMIT_MSG=$msg" >> $env:GITHUB_OUTPUT
-          "COMMIT_AUTHOR=$author" >> $env:GITHUB_OUTPUT
-          "COMMIT_DATE=$date" >> $env:GITHUB_OUTPUT
-          "COMMIT_AGO=$ago" >> $env:GITHUB_OUTPUT  
-
+        id: execution_info
+        uses: ./.github/actions/extract-commit-stats
+        
+#      - name: Use output in summary
+#        run: |
+#          echo "FULL_SHA is : ${{ steps.execution_info.outputs.FULL_SHA }}"
+        
       ##############################################################################
         # Setup JDK 24 (Temurin with Zulu fallback for JaCoCo + Compilation)
       ##############################################################################
@@ -141,8 +124,6 @@ jobs:
           echo "SONAR_SCANNER_HOME=$PWD/tools/sonar-scanner-7.1.0.4889-windows" >> $GITHUB_ENV
           echo "$PWD/tools/sonar-scanner/sonar-scanner-7.1.0.4889-windows/bin" >> $GITHUB_PATH       
 
-
-
       ##########################
       # COMPILE + JACOCO
       ##########################
@@ -194,9 +175,9 @@ jobs:
           )
 
       #####################################
-          # RUN ALL-HYGIENE SWEEP CHECK
+        # RUN ALL-HYGIENE SWEEP CHECK
       #####################################
-      - name: ?? Run SonarCloud Scan (via batch)
+      - name: ALL-HYGIENE SWEEP CHECK ( Run hygiene health check analysis using via batch script )
         if: success()
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -273,7 +254,7 @@ jobs:
           
           $projectKey = $env:SONAR_PROJECT_KEY
           $projectOrg = $env:SONAR_ORG
-          $branch = "${{ github.ref_name }}"
+          $branch = $env:TRIGGER_BRANCH 
           # Confirm if token is passed
           if (-not $env:SONAR_TOKEN) {
            Write-Error "⚠ SONAR_TOKEN is empty!"
@@ -406,6 +387,7 @@ jobs:
           echo "| PMD Violations          | $pmdViolations |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Code Coverage (Sonar)   | $sonarCoverage% $coverageEmoji |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Coverage Visual         | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
+          echo "|-------------------------|-----------|" >> $env:GITHUB_STEP_SUMMARY
           echo "| 🗂 Sonar Issues (Total) | $totalSonarFetchedIssues |" >> $env:GITHUB_STEP_SUMMARY
           echo "| 🟥 BLOCKER              | $sonarBlockerEmojiMark [$blocker]($($severityLinks.BLOCKER)) |" >> $env:GITHUB_STEP_SUMMARY
           echo "| 🟧 HIGH                 | $sonarHighEmojiMark [$high]($($severityLinks.HIGH)) |" >> $env:GITHUB_STEP_SUMMARY
@@ -413,6 +395,7 @@ jobs:
           echo "| 🟦 LOW                  | $sonarLowEmojiMark [$low]($($severityLinks.LOW)) |" >> $env:GITHUB_STEP_SUMMARY
           echo "| ℹ INFO                 | $sonarInfoEmojiMark [$info]($($severityLinks.INFO)) |" >> $env:GITHUB_STEP_SUMMARY
           echo "| Legend                 | ✅ is GREAT-GOING 🟡 is WATCH-OUT  🔴 is GONE-OVERBOARD |" >> $env:GITHUB_STEP_SUMMARY
+          echo "|-------------------------|-----------|" >> $env:GITHUB_STEP_SUMMARY
           echo "" >> $env:GITHUB_STEP_SUMMARY
           echo "🌐 [View SonarCloud Overall Code Dashboard]($sonarOverallCodeDashBoardUrl)" >> $env:GITHUB_STEP_SUMMARY
           echo "🌐 [View SonarCloud Issues Breakdown Dashboard]($sonarOpenIssuesDashboardUrl)" >> $env:GITHUB_STEP_SUMMARY
@@ -429,23 +412,23 @@ jobs:
           
           "sonarBlocker=$blocker" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarBlockerEmojiMark=$sonarBlockerEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sonarBlockerURL=$($severityLinks.BLOCKER))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sonarBlockerURL=$($severityLinks.BLOCKER)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
           "sonarHigh=$high" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarHighEmojiMark=$sonarHighEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sonarHighURL=$($severityLinks.HIGH))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sonarHighURL=$($severityLinks.HIGH)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
           "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarMediumEmojiMark=$sonarMediumEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sonarMediumURL=$($severityLinks.MEDIUM))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sonarMediumURL=$($severityLinks.MEDIUM)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
           "sonarLow=$low" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarLowEmojiMark=$sonarLowEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sonarLowURL=$($severityLinks.LOW))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sonarLowURL=$($severityLinks.LOW)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
           "sonarInfo=$info" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarInfoEmojiMark=$sonarInfoEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "sonarInfoURL=$($severityLinks.INFO))" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "sonarInfoURL=$($severityLinks.INFO)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           
           "sonarOverallCodeDashBoardURL=$sonarOverallCodeDashBoardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -636,34 +619,34 @@ jobs:
           
           # Step 4: Export results as an output variable for email step
           # Example: "udemy_lpa_javamasterclass:0,2,15,5,0;misc_utils:0,1,8,4,0"
-            $emailBreakdown = ($moduleAgg.Keys | ForEach-Object {
+            $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
               $b = $moduleAgg[$_]
-              "${_}:$($b.BLOCKER),$($b.HIGH),$($b.MEDIUM),$($b.LOW),$($b.INFO)"
+              "${_}:$(Mark $b.BLOCKER),$(Mark $b.HIGH),$(Mark $b.MEDIUM),$(Mark $b.LOW),$(Mark $b.INFO)"
             }) -join ";"
           
           
-          $emailTable = "<table border='1' cellpadding='5' cellspacing='0'>"
-          $emailTable += "<tr><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
+          $emailModuleSevAggTable = "<table border='1' cellpadding='5' cellspacing='0'>"
+          $emailModuleSevAggTable += "<tr><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
           
-          foreach ($entry in $emailBreakdown -split ";") {
+          foreach ($entry in $emailModuleSevAggBreakdown -split ";") {
           $parts = $entry -split ":"
           if ($parts.Count -eq 2) {
           $module = $parts[0]
           $counts = $parts[1] -split ","
-          $emailTable += "<tr>"
-          $emailTable += "<td>$module</td>"
+          $emailModuleSevAggTable += "<tr>"
+          $emailModuleSevAggTable += "<td>$module</td>"
           foreach ($c in $counts) {
-          $emailTable += "<td align='center'>$c</td>"
+          $emailModuleSevAggTable += "<td align='center'>$c</td>"
           }
-          $emailTable += "</tr>"
+          $emailModuleSevAggTable += "</tr>"
           }
           }
           
-          $emailTable += "</table>"
+          $emailModuleSevAggTable += "</table>"
           
           # Export both plain breakdown and HTML table
-          echo "EMAIL_BREAKDOWN=$emailBreakdown" >> $env:GITHUB_ENV
-          echo "EMAIL_TABLE=$emailTable" >> $env:GITHUB_ENV 
+          echo "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" >> $env:GITHUB_ENV
+          echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV 
       
 
       ##########################
@@ -708,20 +691,28 @@ jobs:
         env:
           START_EPOCH: ${{ steps.start_time.outputs.startTime }}
         run: |
+          # Define IST offset
+          $istOffset = [System.TimeSpan]::FromHours(5.5)
+          
           $startEpoch = [int]$env:START_EPOCH
           $endEpoch = [int][double]::Parse((Get-Date -UFormat %s))
           
           $startDT = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
           $endDT = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+
+          # Convert to DateTimeOffset and shift to IST
+          $startDT_IST = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
+          $endDT_IST   = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
           
           $durationSec = $endEpoch - $startEpoch
           $mins = [math]::Floor($durationSec / 60)
           $secs = $durationSec % 60
           $durationFormatted = "{0}m {1}s" -f $mins, $secs
           
-          echo "startTime=$startDT" >> $env:GITHUB_OUTPUT
-          echo "endTime=$endDT" >> $env:GITHUB_OUTPUT
+          echo "startTime=$startDT_IST" >> $env:GITHUB_OUTPUT
+          echo "endTime=$endDT_IST" >> $env:GITHUB_OUTPUT
           echo "formattedDuration=$durationFormatted" >> $env:GITHUB_OUTPUT
+          echo "IST=$commitDateIST" >> $env:GITHUB_OUTPUT
 
 
       ##########################
@@ -730,16 +721,6 @@ jobs:
 
       - name: 📧 Email Summary
         uses: dawidd6/action-send-mail@v3
-        env:
-          CHECKSTYLE_VIOLATIONS: ${{ steps.metrics.outputs.checkstyleCount }}
-          PMD_VIOLATIONS: ${{ steps.metrics.outputs.pmdCount }}
-          JACOCO_COVERAGE_PERCENT: ${{ steps.metrics.outputs.jacocoPercent }}
-          SONARCLOUD_DASHBOARD_URL: ${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}
-          SONARCLOUD_ISSUE_BREAKDOWN_URL: ${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}
-          SHORT_SHA: ${{ steps.commit_info.outputs.SHORT_SHA }}
-          COMMIT_MSG: ${{ steps.commit_info.outputs.COMMIT_MSG }}
-          COMMIT_AUTHOR: ${{ steps.commit_info.outputs.COMMIT_AUTHOR }}
-          COMMIT_DATE: ${{ steps.commit_info.outputs.COMMIT_DATE }}
         with:
           server_address: ${{ vars.SMTP_SERVER_ADDRESS }}
           server_port: ${{ vars.SMTP_SERVER_PORT }}
@@ -754,51 +735,46 @@ jobs:
           from: GitHub Hygiene Bot <${{ vars.EMAIL_RECIPIENT }}>
           html_body: |
             <p>Hi Hemant,</p>
-            <p>✅ A GitHub Hygiene Check (CheckStyle, PMD, JaCoCo, SonarCloud) was completed on <strong>${{ github.repository }}</strong> (branch: <code>main</code>).</p>
+            <p>✅ A GitHub Hygiene Check (CheckStyle, PMD, JaCoCo, SonarCloud) was completed on <strong>${{ github.repository }}</strong> (branch: <code>${{ env.TRIGGER_BRANCH }}</code>).</p>
             
             <p>📊 <strong>Hygiene Summary:</strong></p>
             <ul>
-              <li>📝 Checkstyle Violations: <strong>${{ steps.metrics.outputs.checkstyleCount }}</strong></li>
-              <li>🔍 PMD Violations: <strong>${{ steps.metrics.outputs.pmdCount }}</strong></li>
-              <li>📈 Code Coverage: <strong>${{ steps.metrics.outputs.sonarCoverage }}</strong></li>
-              <li>🎯 Coverage Visual: <code>${{ steps.metrics.outputs.coverageBar }}</code></li>
-              <li>🗂 SonarCloud Total Issues: <strong>${{ steps.metrics.outputs.totalSonarFetchedIssues }}</strong></li>
-              <li>🌐 <a href="${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}">View SonarCloud Overall Code Dashboard</a></li>
+              <li>📝 <strong>Checkstyle Violations:</strong> <code>${{ steps.metrics.outputs.checkstyleCount }}</code></li>
+              <li>🔍 <strong>PMD Violations:</strong> <code>${{ steps.metrics.outputs.pmdCount }}</code></li>
+              <li>📈 <strong>Code Coverage:</strong> <code>${{ steps.metrics.outputs.sonarCoverage }}</code></li>
+              <li>🎯 <strong>Coverage Visual: <code>${{ steps.metrics.outputs.coverageBar }}</code></li>
+              <li>🗂 <strong>SonarCloud Total Issues:</strong><code>${{ steps.metrics.outputs.totalSonarFetchedIssues }}</code></li>
+              <li>🌐 <a href="${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}"><code>View SonarCloud Overall Code Dashboard</code></a></li>
             </ul>
-            
             
             <p>🛠 <strong>SonarCloud Severity Breakdown:</strong></p>
             <ul>
-              <li>🟥 <strong>BLOCKER: <a href="${{ steps.metrics.outputs.sonarBlockerUrl }}">${{ steps.metrics.outputs.sonarBlocker }}</a> ${{ steps.metrics.outputs.sonarBlockerEmojiMark }}</strong></li>
-              <li>🟧 <strong>HIGH: <a href="${{ steps.metrics.outputs.sonarHighUrl }}">${{ steps.metrics.outputs.sonarHigh }}</a> ${{ steps.metrics.outputs.sonarHighEmojiMark }}</strong></li>
-              <li>🟨 <strong>MEDIUM: <a href="${{ steps.metrics.outputs.sonarMediumUrl }}">${{ steps.metrics.outputs.sonarMedium }}</a> ${{ steps.metrics.outputs.sonarMediumEmojiMark }}</strong></li>
-              <li>🟦 <strong>LOW: <a href="${{ steps.metrics.outputs.sonarLowUrl }}">${{ steps.metrics.outputs.sonarLow }}</a> ${{ steps.metrics.outputs.sonarLowEmojiMark }}</strong></li>
-              <li>ℹ️<strong>INFO: <a href="${{ steps.metrics.outputs.sonarInfoUrl }}">${{ steps.metrics.outputs.sonarInfo }}</a> ${{ steps.metrics.outputs.sonarInfoEmojiMark }}</strong></li>
-              <li>🌐 <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}">View SonarCloud Open Issues Breakdown Dashboard</a></li>
+              <li>🟥 <strong>BLOCKER:</strong><a href="${{ steps.metrics.outputs.sonarBlockerUrl }}"><code>${{ steps.metrics.outputs.sonarBlocker }}</code></a> ${{ steps.metrics.outputs.sonarBlockerEmojiMark }}</li>
+              <li>🟧 <strong>HIGH:</strong> <a href="${{ steps.metrics.outputs.sonarHighUrl }}"><code>${{ steps.metrics.outputs.sonarHigh }}</code></a> ${{ steps.metrics.outputs.sonarHighEmojiMark }}</li>
+              <li>🟨 <strong>MEDIUM:</strong> <a href="${{ steps.metrics.outputs.sonarMediumUrl }}"><code>${{ steps.metrics.outputs.sonarMedium }}</code></a> ${{ steps.metrics.outputs.sonarMediumEmojiMark }}</li>
+              <li>🟦 <strong>LOW:</strong> <a href="${{ steps.metrics.outputs.sonarLowUrl }}"><code>${{ steps.metrics.outputs.sonarLow }}</code></a> ${{ steps.metrics.outputs.sonarLowEmojiMark }}</li>
+              <li>ℹ️<strong>INFO:</strong> <a href="${{ steps.metrics.outputs.sonarInfoUrl }}"><code>${{ steps.metrics.outputs.sonarInfo }}</code></a> ${{ steps.metrics.outputs.sonarInfoEmojiMark }}</li>
+              <li>🌐 <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}"><code>View SonarCloud Open Issues Breakdown Dashboard</code></a></li>
             </ul>
             
             <h3>📦 SonarCloud Module Severity Breakdown</h3>
-            ${{ env.EMAIL_TABLE }}
+            ${{ env.EMAIL_MODULE_SEV_AGG_TABLE }}
 
-            <p>📦 <strong>Artifacts:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Download from workflow run</a></p>
+            <p>📦 <strong>Artifacts:</strong> <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"><code>Download from workflow run</code></a></p>
             <p>📜 <strong>Last Commit Info:</strong></p>
             <ul>
-              <li><strong>SHA:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}"><code>${{ steps.commit_info.outputs.SHORT_SHA }}</code></a></li>
-              <li><strong>Message:</strong> <em>${{ steps.commit_info.outputs.COMMIT_MSG }}</em></li>
-              <li><strong>Author:</strong> ${{ steps.commit_info.outputs.COMMIT_AUTHOR }}</li>
-              <li><strong>Date:</strong> ${{ steps.commit_info.outputs.COMMIT_DATE }} <span style="color:gray;">(${{ steps.commit_info.outputs.COMMIT_AGO }})</span></li>
-              <li><strong>🌐 View Commit on GitHub:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}">Open Commit</a></li>
-              <li><strong>🌐 View Commit:</strong>
-                  <a href="https://github.com/${{ github.repository }}/commit/${{ steps.commit_info.outputs.FULL_SHA }}">Open on GitHub</a>
-              </li>
+              <li>🌐 <strong>Click Short SHA to view commit on GitHub:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ steps.execution_info.outputs.FULL_SHA }}"><code>${{ steps.execution_info.outputs.SHORT_SHA }}</code></a></li>
+              <li><strong>Message:</strong> <code><em>${{ steps.execution_info.outputs.COMMIT_MSG }}</em></code></li>
+              <li><strong>Author:</strong> <code>${{ steps.execution_info.outputs.COMMIT_AUTHOR }}</code></li>
+              <li><strong>Date:</strong> <code>${{ steps.execution_info.outputs.COMMIT_DATE }}(${{ steps.execution_info.outputs.COMMIT_AGO }})</code></li>
             </ul>
-            <p>⏱ <strong>Job Execution:</strong></p>
-             <ul>
-                <li><strong>Start Time:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.startTime }}</li>
-                <li><strong>End Time:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.endTime }}</li>
-                <li><strong>Job Duration:</strong> ${{ steps.calculate-duration-and-export-timing.outputs.formattedDuration }}</li>
-              </ul>
-            <hr>
-            <p><em>🤖 This is an automated message from a GitHub Actions workflow.<br>
-            Please do not reply.</em></p>
-
+            
+            <p><strong>Github Job Execution Info:</strong></p>
+            <ul>
+                <li>${{ steps.execution_info.outputs.TRIGGER_INFO }}</li>
+                <li>⏱ <strong>Start Time:</strong> <code>${{ steps.calculate-duration-and-export-timing.outputs.startTime }}</code></li>
+                <li>⏱ <strong>End Time:</strong> <code>${{ steps.calculate-duration-and-export-timing.outputs.endTime }}</code></li>
+                <li>⏱ <strong>Job Duration:</strong> <code>${{ steps.calculate-duration-and-export-timing.outputs.formattedDuration }}</code></li>
+            </ul>
+            <hr style="dotted">
+            <p><em>🤖 This is an automated message from a GitHub Actions workflow.<br>Please do not reply.</em></p>
