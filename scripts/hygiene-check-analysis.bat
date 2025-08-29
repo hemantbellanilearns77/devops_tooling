@@ -4,7 +4,7 @@ setlocal EnableDelayedExpansion
 echo =================================================================================
 echo     🧹 All Hygiene Workflow — Checkstyle then PMD then JaCoCo then SonarCloud
 echo =================================================================================
-set "executionEnv=%~1
+set "executionEnv=%~1"
 if /i "%executionEnv%"=="githubactions" goto :github
 if /i "%executionEnv%"=="local" goto :local
 goto :unsupported
@@ -21,16 +21,20 @@ set "originalDir=%CD%"
 	echo REPO_ROOT is !REPO_ROOT!
 
 	:: === Parse Skip Flags ===
-	set skip_checkstyle=false
-	set skip_pmd=false
-	set skip_jacoco=false
-	set skip_sonar=false
+	set "skip_checkstyle=false"
+	set "skip_pmd=false"
+	set "skip_jacoco=false"
+	set "skip_sonar=false"
 
+	:: Remove the first argument (environment) from the list
+	shift
+
+	:: Iterate over remaining arguments to set skip flags
 	for %%A in (%*) do (
-		if /I "%%~A"=="--skip-checkstyle" set skip_checkstyle=true
-		if /I "%%~A"=="--skip-pmd" set skip_pmd=true
-		if /I "%%~A"=="--skip-jacoco" set skip_jacoco=true
-		if /I "%%~A"=="--skip-sonar" set skip_sonar=true
+		if /I "%%~A"=="--skip-checkstyle" set "skip_checkstyle=true"
+		if /I "%%~A"=="--skip-pmd" set "skip_pmd=true"
+		if /I "%%~A"=="--skip-jacoco" set "skip_jacoco=true"
+		if /I "%%~A"=="--skip-sonar" set "skip_sonar=true"
 	)
 
 	:: === Generate Timestamp ===
@@ -108,12 +112,16 @@ set skip_checkstyle=false
 set skip_pmd=false
 set skip_jacoco=false
 set skip_sonar=false
+:: Remove the first argument (environment) from the list
+shift
 
+
+:: Iterate over remaining arguments to set skip flags
 for %%A in (%*) do (
-    if /I "%%~A"=="--skip-checkstyle" set skip_checkstyle=true
-    if /I "%%~A"=="--skip-pmd" set skip_pmd=true
-    if /I "%%~A"=="--skip-jacoco" set skip_jacoco=true
-    if /I "%%~A"=="--skip-sonar" set skip_sonar=true
+	if /I "%%~A"=="--skip-checkstyle" set "skip_checkstyle=true"
+	if /I "%%~A"=="--skip-pmd" set "skip_pmd=true"
+	if /I "%%~A"=="--skip-jacoco" set "skip_jacoco=true"
+	if /I "%%~A"=="--skip-sonar" set "skip_sonar=true"
 )
 
 :: === Generate Timestamp ===

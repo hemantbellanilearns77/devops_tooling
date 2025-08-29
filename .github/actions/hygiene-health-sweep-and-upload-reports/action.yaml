@@ -1,31 +1,43 @@
 ##############################################################
-      # PERFORM HYGIENE HEALTH CHECKS AND UPLOAD REPORTS
+# PERFORM HYGIENE HEALTH CHECKS AND UPLOAD REPORTS
 ##############################################################
 name: "Perform Hygiene Health Checks and Upload Reports"
 description: ""
-inputs: {}  # If you don't have any inputs, you can leave it empty or remove this line.
-outputs: {} # If you don't have any inputs, you can leave it empty or remove this line.
+inputs:
+  SKIP_FLAG:
+    description: ""
+    required: true
+
+outputs: { } # If you don't have any inputs, you can leave it empty or remove this line.
 runs:
   using: "composite"
   steps:
-        #####################################
-        # RUN ALL-HYGIENE SWEEP CHECK
-        #####################################
-        - name: ALL-HYGIENE SWEEP CHECK ( Run hygiene health check analysis using via batch script )
-          if: success()
-          env:
-            SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          run: scripts\hygiene-check-analysis.bat githubactions
-          shell: cmd
+    #####################################
+    # RUN ALL-HYGIENE SWEEP CHECK
+    #####################################
+    - name: ALL-HYGIENE SWEEP CHECK (Run hygiene health check analysis via batch script)
+      if: success()
+      shell: pwsh
+      run: |
+        $SKIP_FLAG = "${{ inputs.SKIP_FLAG }}"
+    
+        # --- DEBUG: show what is being passed
+        Write-Host "🧪 SKIP_FLAG received in composite: '$SKIP_FLAG'"
+          if ([string]::IsNullOrWhiteSpace($SKIP_FLAG)) {
+          Write-Host "⚠️ SKIP_FLAG is empty — defaulting to ''"
+          $SKIP_FLAG = ""
+        }
+        Write-Host "🧪 SKIP_FLAG as finally being passed to batch script in composite: '$SKIP_FLAG'"
+        & scripts/hygiene-check-analysis.bat githubactions $SKIP_FLAG
 
-        ##########################
-        # UPLOAD REPORTS
-        ##########################
+    ##########################
+    # UPLOAD REPORTS
+    ##########################
 
-        - name: ?? Upload All Reports
-          uses: actions/upload-artifact@v4
-          with:
-            name: hygiene-reports
-            path: |
-              reports/**
-              logs/**
+    - name: ?? Upload All Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: hygiene-reports
+        path: |
+          reports/**
+          logs/**
