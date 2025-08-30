@@ -1,43 +1,3 @@
-##############################################################
-# PUBLISH GITHUB SUMMARY SECTION AND SEND EMAIL
-##############################################################
-name: "Publish GITHUB-Summary and Send Email"
-description: ""
-inputs:
-  startTime:
-    description: "Start time from setup-starttime composite"
-    required: true
-  BRANCH_EXECUTED:
-    required: false
-    description: ""
-  SKIP_FLAG:
-    required: false
-    description: ""
-
-outputs:
-  sonarExecutionNote:
-    description: ""
-    value: ${{ steps.sonar-vars.outputs.sonarExecutionNote }}
-  sonarIssuesNote:
-    description: ""
-    value: ${{ steps.sonar-vars.outputs.sonarIssuesNote }}
-  lastSonarAnalysis:
-    description: ""
-    value: ${{ steps.sonar-vars.outputs.lastSonarAnalysis }}
-runs:
-  using: "composite"
-  steps:
-    ##########################
-    # SUMMARY SECTION
-    ##########################
-
-    - name: 📊 Add Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar Issues)
-      id: metrics
-      shell: pwsh
-      env:
-        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-        JOB_STATUS: ${{ job.status }}   # 👈 capture job status here
-      run: |
         ############################################################
         # === Parse JaCoCo XML (Overall) ===
         ############################################################
@@ -111,8 +71,8 @@ runs:
         ############################################################
         # === Derive Sonar Presentation Variables ===
         ############################################################
-        Write-Host "✅ SKIP_FLAG as received in publish summary composite is: ${{ inputs.SKIP_FLAG }}"
-        if ("${{ inputs.SKIP_FLAG }}" -match "--skip-sonar") {
+        Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $env:SKIP_FLAG"
+        if ($env:SKIP_FLAG -match "--skip-sonar") {
         $sonarExecutionNote = "SKIPPED ⚡ (manual override)"
         $sonarIssuesNote    = "from last successful analysis : $totalSonarFetchedIssues"
         $lastSonarAnalysis  = "N/A"
@@ -147,7 +107,7 @@ runs:
         ############################################################
         # === Fetch SonarCloud Coverage Metrics ===
         ############################################################
-        $encodedAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${{ env.SONAR_TOKEN }}:"))
+        $encodedAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($env:SONAR_TOKEN):"))
         $headers = @{ Authorization = "Basic $encodedAuth" }
         
         function Get-SonarMetric($metricKey) {
@@ -240,9 +200,9 @@ runs:
         $sonarLowEmojiMark = $(MarkEmoji $low)
         $sonarInfoEmojiMark = $(MarkEmoji $info)
         
-                
+
         ############################################################
-              # === Write Overall Table ===
+                # === Write Overall Table ===
         ############################################################
         echo "### 📊 Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar)" >> $env:GITHUB_STEP_SUMMARY
         echo "| **Metric**               | **Value** |" >> $env:GITHUB_STEP_SUMMARY
@@ -279,7 +239,7 @@ runs:
         "sonarHighEmojiMark=$sonarHighEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarHighURL=$($severityLinks.HIGH)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
-        "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append 
         "sonarMediumEmojiMark=$sonarMediumEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarMediumURL=$($severityLinks.MEDIUM)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
@@ -295,8 +255,8 @@ runs:
         "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         $emailModuleSevAggTable=""
-        if ("${{ inputs.SKIP_FLAG }}" -match "--skip-sonar") {
-          
+        if ($env:SKIP_FLAG -match "--skip-sonar") {
+        
           $emailModuleSevAggTable="<code>⚡ Unavailable — Sonar was SKIPPED (manual override)</code>"
           echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV 
            Write-Host "Skipping rest of this step"
@@ -511,100 +471,3 @@ runs:
         # Export both plain breakdown and HTML table
         echo "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" >> $env:GITHUB_ENV
         echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV 
-
-      ###################################
-      # EXECUTION INFO COMPOSITE CALL
-      ###################################
-    - name: Call Execution Info
-      id: execution-info
-      uses: ./.github/actions/execution-info
-      with:
-        startTime: ${{ inputs.startTime }}
-
-    - name: Log Start/End Time After Execution Info
-      run: |
-        Write-Host "✅ Start Time after execution-info: ${{ steps.execution-info.outputs.startTime }}"
-        Write-Host "✅ End Time after execution-info:   ${{ steps.execution-info.outputs.endTime }}"
-        Write-Host "✅ Duration after execution-info:   ${{ steps.execution-info.outputs.formattedDuration }}"
-      shell: pwsh
-
-    ##########################
-    # Email Success Summary
-    ##########################
-    - name: 📧 Send Hygiene Summary Email
-      uses: dawidd6/action-send-mail@v3
-      with:
-        server_address: ${{ env.SMTP_SERVER_ADDRESS }}
-        server_port: ${{ env.SMTP_SERVER_PORT }}
-        username: ${{ env.SMTP_USER }}
-        password: ${{ env.SMTP_PASS }}
-        subject: >-
-          ${{ job.status == 'success' && '✅ SUCCESS' || '❌ FAILURE' }}
-          | ${{ github.workflow }}
-          | ${{ github.repository }} (branch: ${{ inputs.BRANCH_EXECUTED }})
-          | Duration: ${{ steps.execution-info.outputs.formattedDuration }}
-          ${{ steps.metrics.outputs.sonarCoverage && steps.metrics.outputs.sonarCoverage < 77 && '(⚠️ Coverage Below Threshold)' || '' }}
-        to: ${{ env.EMAIL_RECIPIENT }}
-        from: GitHub Hygiene Bot <${{ env.EMAIL_RECIPIENT }}>
-        html_body: |
-          <html>
-          <body style="font-family:Calibri;font-size:16px;color:#333; line-height:1.4;">          
-          <p>Hi Hemant,</p>
-          <h2>🏁 Hygiene Check : <span style="color:${{ job.status == 'success' && 'green' || 'red' }};">
-              ${{ job.status == 'success' && 'PASSED ✅' || 'FAILED ❌' }}
-            </span>
-          </h2>
-          <strong>Repository:</strong> <code>${{ github.repository }}</code><br/> 
-          <strong>branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
-          <strong>Duration:</strong> <code>${{ steps.execution-info.outputs.formattedDuration }}</code><br/>
-          <p><strong>Legend:</strong> ✅ = Great / 0 issues, 🟡 = Watch-Out / 1-27 issues, 🔴 = Action Needed / >27 issues</p>
-          <h3>📊 Summary</h3>
-          <ul>
-            <li>📈 <b>Code Coverage:</b> ${{ steps.metrics.outputs.sonarCoverage }}
-              ${{ steps.metrics.outputs.sonarCoverage && steps.metrics.outputs.sonarCoverage < 80 && '<span style="color:red;">(Below 80%)</span>' || '<span style="color:green;">(OK)</span>' }}
-            </li>
-            <li>🎯 <strong>Coverage Visual: </strong><code>${{ steps.metrics.outputs.coverageBar }}</code></li>
-            <li>📝 <strong>Checkstyle Violations:</strong> <code>${{ steps.metrics.outputs.checkstyleCount }}</code></li>
-            <li>🔍 <strong>PMD Violations:</strong> <code>${{ steps.metrics.outputs.pmdCount }}</li>           
-            <li>🗂 <strong>SonarCloud:</strong><br/>
-                  &nbsp;&nbsp;• Execution: <code>${{ steps.metrics.outputs.sonarExecutionNote }}</code><br/>
-                  &nbsp;&nbsp;• Issues: <code>${{ steps.metrics.outputs.sonarIssuesNote }}</code><br/>
-                  &nbsp;&nbsp;• Last Analysis: <code>${{ steps.metrics.outputs.lastSonarAnalysis }}</code><br/>
-              🛠 <strong>SonarCloud Severity Breakdown:</strong>
-              <ul>
-                <li>🟥 <strong>BLOCKER:</strong> <a href="${{ steps.metrics.outputs.sonarBlockerUrl }}"><code>${{ steps.metrics.outputs.sonarBlocker }}</code></a> ${{ steps.metrics.outputs.sonarBlockerEmojiMark }}</li>
-                <li>🟧 <strong>HIGH:</strong> <a href="${{ steps.metrics.outputs.sonarHighUrl }}"><code>${{ steps.metrics.outputs.sonarHigh }}</code></a> ${{ steps.metrics.outputs.sonarHighEmojiMark }}</li>
-                <li>🟨 <strong>MEDIUM:</strong> <a href="${{ steps.metrics.outputs.sonarMediumUrl }}"><code>${{ steps.metrics.outputs.sonarMedium }}</code></a> ${{ steps.metrics.outputs.sonarMediumEmojiMark }}</li>
-                <li>🟦 <strong>LOW:</strong> <a href="${{ steps.metrics.outputs.sonarLowUrl }}"><code>${{ steps.metrics.outputs.sonarLow }}</code></a> ${{ steps.metrics.outputs.sonarLowEmojiMark }}</li>
-                <li>ℹ️<strong>INFO:</strong> <a href="${{ steps.metrics.outputs.sonarInfoUrl }}"><code>${{ steps.metrics.outputs.sonarInfo }}</code></a> ${{ steps.metrics.outputs.sonarInfoEmojiMark }}</li>
-                <li>🌐 <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}"><code>View SonarCloud Open Issues Breakdown Dashboard</code></a></li>
-              </ul>
-            </li>
-          </ul>
-          <h3>📦 Module Severity Breakdown</h3>
-          ${{ env.EMAIL_MODULE_SEV_AGG_TABLE }}
-          <h3>🔗 Useful Links</h3>
-          <ul>
-            <li>🌐 <a href="${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}">SonarCloud Overall Code Dashboard (All Open Issues)</a></li>
-            <li>🌐 <a href="${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}">SonarCloud Open Issues Breakdown (Severity-Wise) Dashboard</a></li>
-            <li>🌐 <a href="https://github.com/${{ github.repository }}/commit/${{ steps.execution-info.outputs.FULL_SHA }}">View Commit (SHA=${{ steps.execution-info.outputs.SHORT_SHA }})</a></li>
-            <li>🌐 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Download Artifacts from Hygiene Check Job </a></li>
-          </ul>
-          <h3>📌 Next Steps</h3>
-          <ul>
-            <li>Fix Checkstyle violations in main module.</li>
-            <li>Increase test coverage (currently ${{ steps.metrics.outputs.sonarCoverage }}%).</li>
-            <li>Review medium & low severity SonarCloud issues.</li>
-          </ul>
-          <h3>📜 Job Execution Info</h3>
-          <ul>
-            <li>Triggered by: ${{ github.actor }} (Manual Dispatch)</li>
-            <li>Last Commit: ${{ steps.execution-info.outputs.COMMIT_MSG }} by ${{ steps.execution-info.outputs.COMMIT_AUTHOR }}</li>
-            <li>Commit Date: ${{ steps.execution-info.outputs.COMMIT_DATE }} (IST)</li>
-            <li>Job Duration: ${{ steps.execution-info.outputs.formattedDuration }}</li>
-            <li>Start: ${{ steps.execution-info.outputs.startTime }} | End: ${{ steps.execution-info.outputs.endTime }}</li>
-          </ul>
-          <p>🕒 All times reported in IST.</p>
-          <p><em>🤖 This is an automated message from GitHub Actions. Please do not reply.</em></p>
-          </body>
-          </html>
