@@ -73,14 +73,13 @@
         ############################################################
         Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $env:SKIP_FLAG"
         if ($env:SKIP_FLAG -match "--skip-sonar") {
-        $sonarExecutionNote = "SKIPPED ⚡ (manual override)"
-        $sonarIssuesNote    = "from last successful analysis : $totalSonarFetchedIssues"
-        $lastSonarAnalysis  = "N/A"
+            $sonarExecutionNote = "SKIPPED ⚡ (manual override)"
+            $sonarIssuesNote    = "from last successful analysis : $totalSonarFetchedIssues"
         } else {
-        $sonarExecutionNote = "EXECUTED ✅"
-        $sonarIssuesNote    = "$totalSonarFetchedIssues"
+            $sonarExecutionNote = "EXECUTED ✅"
+            $sonarIssuesNote    = "from just executed successful analysis : $totalSonarFetchedIssues"
         }
-        # --- Fetch last analysis dynamically from SonarCloud API ---
+        # --- Fetch timestamp of last analysis dynamically from SonarCloud API ---
         $apiUrl = "https://sonarcloud.io/api/project_analyses/search?project=$projectKey&ps=1"
         try {
           $response = Invoke-RestMethod -Uri $apiUrl -Method Get 
@@ -91,13 +90,14 @@
             $lastAnalysisIst = [System.TimeZoneInfo]::ConvertTimeFromUtc($lastAnalysisUtc.ToUniversalTime(), $istZone)
             $lastSonarAnalysis = $lastAnalysisIst.ToString("yyyy-MM-dd HH:mm") + " IST"
           } else {
-              $lastSonarAnalysis = "N/A"
+              $lastSonarAnalysis = "SonarCloud API Fetch Project Analysis did not return anything"
+              Write-Warning "SonarCloud API Fetch Project Analysis did not return anything"
           }
         } catch {
           Write-Warning "Failed to fetch last Sonar analysis: $_"
           $lastSonarAnalysis = "N/A"
         }
-          Write-Host "📅 Last Analysis IST: $lastSonarAnalysis"
+        Write-Host "📅 Last Analysis IST: $lastSonarAnalysis"
         
         # expose for later consumers (email etc.)
         "sonarExecutionNote=$sonarExecutionNote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -112,7 +112,7 @@
         
         function Get-SonarMetric($metricKey) {
           $url = "https://sonarcloud.io/api/measures/component?component=$projectKey&metricKeys=coverage"
-          Write-Host "Coverage Fetch URL is $url"
+          # Write-Host "Coverage Fetch URL is $url"
           try {
             $resp = Invoke-WebRequest -Uri $url -Method Get
             $json = $resp.Content | ConvertFrom-Json
@@ -124,7 +124,7 @@
         } 
         
         $sonarCoverage = Get-SonarMetric "coverage"
-        Write-Output "Writing Output Coverage as fetched from Sonar is $sonarCoverage" 
+        # Write-Output "Writing Output Coverage as fetched from Sonar is $sonarCoverage"
         if ($sonarCoverage -ge 50) {
           $coverageEmoji = "🟢"
         } elseif ($sonarCoverage -ge 20) {
@@ -134,7 +134,7 @@
         }
         $coverageBar = Get-AsciiBar $sonarCoverage
         
-        $sonarCoverage = Get-SonarMetric "coverage"
+        # $sonarCoverage = Get-SonarMetric "coverage"
         # Ensure only the first numeric value is used
         if ($sonarCoverage -is [array]) {
           $sonarCoverage = $sonarCoverage[0]
@@ -199,6 +199,28 @@
         $sonarMediumEmojiMark = $(MarkEmoji $medium)
         $sonarLowEmojiMark = $(MarkEmoji $low)
         $sonarInfoEmojiMark = $(MarkEmoji $info)
+
+        function FormatSonarStatus($count, $maxAllowed, $severity) {
+            if ($count -eq 0) {
+                $emoji = "✅"
+                $note  = "(Good)"
+            } elseif ($count -le $maxAllowed) {
+                $emoji = "🟡"
+                $note  = "(Within Threshold)"
+            } else {
+                $emoji = "🔴"
+                $note  = "(Exceeded)"
+            }
+            return " / $maxAllowed $emoji $note"
+            #return "$severity Issues: $count / $maxAllowed $emoji $note"
+}
+
+        $sonarBlockerStatus = FormatSonarStatus $blocker $env:BLOCKER_MAX "🟥 BLOCKER"
+        $sonarHighStatus    = FormatSonarStatus $high    $env:HIGH_MAX    "🟧 HIGH"
+        $sonarMediumStatus  = FormatSonarStatus $medium  $env:MEDIUM_MAX  "🟨 MEDIUM"
+        $sonarLowStatus     = FormatSonarStatus $low     $env:LOW_MAX     "🟦 LOW"
+        $sonarInfoStatus    = FormatSonarStatus $info    $env:INFO_MAX    "ℹ️ INFO"
+
         
 
         ############################################################
@@ -212,11 +234,11 @@
         echo "| Code Coverage (Sonar)    | $sonarCoverage% $coverageEmoji |" >> $env:GITHUB_STEP_SUMMARY
         echo "| Coverage Visual          | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
         echo "| 🗂 SonarCloud            | Execution: <code>$sonarExecutionNote</code><br/>Issues: <code>$sonarIssuesNote</code><br/>Last Analysis: <code>$lastSonarAnalysis</code> |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟥 BLOCKER               | $sonarBlockerEmojiMark [$blocker]($($severityLinks.BLOCKER)) |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟧 HIGH                  | $sonarHighEmojiMark [$high]($($severityLinks.HIGH)) |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟨 MEDIUM                | $sonarMediumEmojiMark [$medium]($($severityLinks.MEDIUM)) |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟦 LOW                   | $sonarLowEmojiMark [$low]($($severityLinks.LOW)) |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| ℹ INFO                  | $sonarInfoEmojiMark [$info]($($severityLinks.INFO)) |" >> $env:GITHUB_STEP_SUMMARY
+        echo "| 🟥 BLOCKER               | [$blocker]($($severityLinks.BLOCKER)) $sonarBlockerStatus |" >> $env:GITHUB_STEP_SUMMARY
+        echo "| 🟧 HIGH                  | [$high]($($severityLinks.HIGH)) $sonarHighStatus |" >> $env:GITHUB_STEP_SUMMARY
+        echo "| 🟨 MEDIUM                | [$medium]($($severityLinks.MEDIUM)) $sonarMediumStatus |" >> $env:GITHUB_STEP_SUMMARY
+        echo "| 🟦 LOW                   | [$low]($($severityLinks.LOW)) $sonarLowStatus |" >> $env:GITHUB_STEP_SUMMARY
+        echo "| ℹ INFO                  | [$info]($($severityLinks.INFO)) $sonarInfoStatus |" >> $env:GITHUB_STEP_SUMMARY
         echo "| Legend                  | ✅ is GREAT-GOING 🟡 is WATCH-OUT  🔴 is GONE-OVERBOARD |" >> $env:GITHUB_STEP_SUMMARY
         echo "" >> $env:GITHUB_STEP_SUMMARY
         echo "🌐 [View SonarCloud Overall Code Dashboard]($sonarOverallCodeDashBoardUrl)" >> $env:GITHUB_STEP_SUMMARY
@@ -232,23 +254,23 @@
         "sonarCoverage=$sonarCoverage%" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarBlocker=$blocker" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarBlockerEmojiMark=$sonarBlockerEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarBlockerEmojiMark=$sonarBlockerStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarBlockerURL=$($severityLinks.BLOCKER)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarHigh=$high" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarHighEmojiMark=$sonarHighEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarHighEmojiMark=$sonarHighStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarHighURL=$($severityLinks.HIGH)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append 
-        "sonarMediumEmojiMark=$sonarMediumEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarMediumEmojiMark=$sonarMediumStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarMediumURL=$($severityLinks.MEDIUM)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarLow=$low" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarLowEmojiMark=$sonarLowEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarLowEmojiMark=$sonarLowStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarLowURL=$($severityLinks.LOW)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarInfo=$info" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarInfoEmojiMark=$sonarInfoEmojiMark" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarInfoEmojiMark=$sonarInfoStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarInfoURL=$($severityLinks.INFO)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         "sonarOverallCodeDashBoardURL=$sonarOverallCodeDashBoardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -258,7 +280,8 @@
         if ($env:SKIP_FLAG -match "--skip-sonar") {
         
           $emailModuleSevAggTable="<code>⚡ Unavailable — Sonar was SKIPPED (manual override)</code>"
-          echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV 
+          # echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV
+          "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
            Write-Host "Skipping rest of this step"
            exit 0   # Ends this step cleanly
         }
@@ -273,24 +296,24 @@
         foreach ($line in $lines) {
           if ($line.Trim()) {
           $parts = $line.Trim() -split "=", 2  # limit to 2 parts only 
-           Write-Output "Next line: '$line' split into key='$($parts[1])' and value='$($parts[0])'"
+           # Write-Output "Next line: '$line' split into key='$($parts[1])' and value='$($parts[0])'"
             if ($parts.Count -eq 2) {
-              Write-Output "Creating map entry: key='$($parts[1])', value='$($parts[0])'"
+              # Write-Output "Creating map entry: key='$($parts[1])', value='$($parts[0])'"
               $modulePathMap[$parts[1]] = $parts[0]
             }
           }
         }
         
-        # Debug: print map
-          foreach ($k in $modulePathMap.Keys) {
-            Write-Output "Map Key: $k => Value: $($modulePathMap[$k])"
-        }
+        <# Debug: print map
+         foreach ($k in $modulePathMap.Keys) {
+             Write-Output "Map Key: $k => Value: $($modulePathMap[$k])"
+         } #>
         # Initialize aggregation buckets for each module
         $moduleAgg = @{}
         foreach ($pathKey in $modulePathMap.Keys) {
-          Write-Output "Iterating over modulePathMap next path key is $pathKey"
+          # Write-Output "Iterating over modulePathMap next path key is $pathKey"
           $moduleName = $modulePathMap[$pathKey]
-          Write-Output "So moduleName is initialized to: $moduleName"
+          # Write-Output "So moduleName is initialized to: $moduleName"
           if (-not $moduleAgg) {
                 Write-Output "❌ moduleAgg is NULL"
           } 
@@ -305,48 +328,48 @@
         if (-not $moduleAgg) {
                 Write-Output "❌ moduleAgg is NULL"
         }  else {
-                Write-Output "✅ moduleAgg exists. Current contents:"
+                # Write-Output "✅ moduleAgg exists. Current contents:"
                 $moduleAgg.GetEnumerator() | ForEach-Object {
                 $val = $_.Value
                 if (-not $val) {
                   Write-Output ("   ⚠ Key = {0}, Value is NULL" -f $_.Key)
                 }
                 else {
-                  Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
+                  # Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
                 }
               } 
-           # Debug: Print out current aggregate state
-            Write-Output "----- Current Module Aggregates -----"
+           <# Debug: Print out current aggregate state
+           Write-Output "----- Current Module Aggregates -----"
            foreach ($moduleName in $moduleAgg.Keys) {
-            $bucket = $moduleAgg[$moduleName]
-             Write-Output ("Module: {0} | BLOCKER={1}, HIGH={2}, MEDIUM={3}, LOW={4}, INFO={5}" -f `
-                                 $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
-           }
-             Write-Output "--------------------------------------"
+                $bucket = $moduleAgg[$moduleName]
+                Write-Output ("Module: {0} | BLOCKER={1}, HIGH={2}, MEDIUM={3}, LOW={4}, INFO={5}" -f `
+                               $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
+           } #>
+           # Write-Output "--------------------------------------"
           }
         
         # Step 1: Get directory list from SonarCloud
         $dirFacetssUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&resolved=false&facets=directories&ps=1"
-        Write-Output "Fetching directories from: $dirFacetssUrl"
+        # Write-Output "Fetching directories from: $dirFacetssUrl"
         $resp = Invoke-WebRequest -Uri $dirFacetssUrl -Headers $headers -Method Get
         $json = $resp.Content | ConvertFrom-Json
         $directories = $json.facets | Where-Object { $_.property -eq "directories" } | Select-Object -ExpandProperty values
-        Write-Output "Directories fetched as below:"
-        $directories | ForEach-Object { Write-Output " - $($_.val)" }
+        # Write-Output "Directories fetched as below:"
+        # $directories | ForEach-Object { Write-Output " - $($_.val)" }
         
         # Step 2: Loop through directories and aggregate counts per module
         foreach ($dirObj in $directories) {
         
           $dir = $dirObj.val
           $matchedModule = $null
-          Write-Output "Next Directory during iteration is: $dir"
+          # Write-Output "Next Directory during iteration is: $dir"
         
           # check if src of any key in modulePathMap matches the starting string of the current directory 
           foreach ($pathKey in $modulePathMap.Keys) {
             if ($dir -like "$pathKey*") {
-              Write-Output "✅ Match: '$dir' starts with '$pathKey'"
+              # Write-Output "✅ Match: '$dir' starts with '$pathKey'"
               $matchedModule = $modulePathMap[$pathKey]
-              Write-Output "Matched module: $matchedModule"
+              # Write-Output "Matched module: $matchedModule"
               break
             } 
           } 
@@ -359,9 +382,9 @@
                 if (-not $moduleAgg) {
                   Write-Output "❌ moduleAgg is NULL"
                 } else {
-                Write-Output "✅ moduleAgg exists. Will execute severity checks and aggregate"  
+                # Write-Output "✅ moduleAgg exists. Will execute severity checks and aggregate"
                 if ($null -ne $moduleAgg[$matchedModule]) {
-                Write-Output "✅ moduleAgg has a row for: $matchedModule and can be populated with severity numbers"
+                # Write-Output "✅ moduleAgg has a row for: $matchedModule and can be populated with severity numbers"
         
                 # now fetch severity-wise and then aggregate it
                   $sevList = "BLOCKER,CRITICAL,MAJOR,MINOR,INFO"
@@ -406,24 +429,24 @@
         if (-not $moduleAgg) {
           Write-Output "❌ moduleAgg is NULL"
         }  else {
-          Write-Output "✅ moduleAgg exists. Current contents:"
+          # Write-Output "✅ moduleAgg exists. Current contents:"
           $moduleAgg.GetEnumerator() | ForEach-Object {
             $val = $_.Value
             if (-not $val) {
-              Write-Output ("   ⚠ Key = {0}, Value is NULL" -f $_.Key)
+              # Write-Output ("   ⚠ Key = {0}, Value is NULL" -f $_.Key)
             }
             else {
-              Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
+              # Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
             }
           }
-          # Debug: Print out current aggregate state
+          <# Debug: Print out current aggregate state
           Write-Output "----- Current Module Aggregates -----"
           foreach ($moduleName in $moduleAgg.Keys) {
             $bucket = $moduleAgg[$moduleName]
-            Write-Output ("Module: {0} | BLOCKER={1}, HIGH={2}, MEDIUM={3}, LOW={4}, INFO={5}" -f `
-                          $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
-          }
-          Write-Output "--------------------------------------"
+            # Write-Output ("Module: {0} | BLOCKER={1}, HIGH={2}, MEDIUM={3}, LOW={4}, INFO={5}" -f `
+                          # $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
+          } #>
+          # Write-Output "--------------------------------------"
         }          
         
           # Step 3: Pretty-print module severity breakdown with conditional icons
@@ -469,5 +492,7 @@
         
         $emailModuleSevAggTable += "</table>"
         # Export both plain breakdown and HTML table
-        echo "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" >> $env:GITHUB_ENV
-        echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV 
+        # echo "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" >> $env:GITHUB_ENV
+        # echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV
+        "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append

@@ -8,6 +8,9 @@ inputs:
   HygieneCheckStatus:
     required: true
     description: ""
+  NextStepsHtml:
+    required: true
+    description: ""
   BRANCH_EXECUTED:
     required: true
     description: ""
@@ -113,6 +116,9 @@ inputs:
   formattedDuration:
     required: true
     description: ""
+  ARTIFACT_URL:
+    required: true
+    description: ""
 
 runs:
   using: "composite"
@@ -125,29 +131,33 @@ runs:
         username: ${{ env.SMTP_USER }}
         password: ${{ env.SMTP_PASS }}
         subject: >-
-          ${{ inputs.HygieneCheckStatus }}
-          | ${{ github.workflow }}
-          | ${{ github.repository }} (branch: ${{ inputs.BRANCH_EXECUTED }})
-          | Duration: ${{ inputs.formattedDuration }}
-          ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
+          ${{ inputs.HygieneCheckStatus }} | ${{ github.workflow }} | ${{ github.repository }} | Branch: ${{ inputs.BRANCH_EXECUTED }} | Run #${{ github.run_id }} | Duration: ${{ inputs.formattedDuration }}
+            ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
+
+#          ${{ inputs.HygieneCheckStatus }}
+#          | ${{ github.workflow }}
+#          | ${{ github.repository }}
+#          | RunID: ${{ github.run_id }}
+#          | (branch: ${{ inputs.BRANCH_EXECUTED }})
+#          | Duration: ${{ inputs.formattedDuration }}
+#          ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
         to: ${{ env.EMAIL_RECIPIENT }}
         from: GitHub Hygiene Bot <${{ env.EMAIL_RECIPIENT }}>
         html_body: |
           <html>
           <body style="font-family:Calibri;font-size:16px;color:#333; line-height:1.4;">          
           <p>Hi Hemant,</p>
-          <h2>🏁 Hygiene Check : <span style="color:${{ job.status == 'success' && 'green' || 'red' }};">
-               <code>${{ inputs.HygieneCheckStatus }}</code>             
+          <h2>🏁 Hygiene Check : <span style="color:${{ inputs.HygieneCheckStatus == 'PASSED ✅' && 'green' || 'red' }};"> <code>${{ inputs.HygieneCheckStatus }}</code> </span>             
             </span>
           </h2>
           <strong>Repository:</strong> <code>${{ github.repository }}</code><br/> 
-          <strong>branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
+          <strong>Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
           <strong>Duration:</strong> <code>${{ inputs.formattedDuration }}</code><br/>
           <p><strong>Legend:</strong> ✅ = Great / 0 issues, 🟡 = Watch-Out / 1-27 issues, 🔴 = Action Needed / >27 issues</p>
           <h3>📊 Summary</h3>
           <ul>
             <li>📈 <b>Code Coverage:</b> ${{ inputs.sonarCoverage }}
-              ${{ inputs.sonarCoverage && inputs.sonarCoverage < 80 && '<span style="color:red;">(Below 80%)</span>' || '<span style="color:green;">(OK)</span>' }}
+              ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '<span style="color:red;">(Below Threshold)</span>' || '<span style="color:green;">(OK)</span>' }}
             </li>
             <li>🎯 <strong>Coverage Visual: </strong><code>${{ inputs.coverageBar }}</code></li>
             <li>📝 <strong>Checkstyle Violations:</strong> <code>${{ inputs.checkstyleCount }}</code></li>
@@ -163,27 +173,28 @@ runs:
                 <li>🟨 <strong>MEDIUM:</strong> <a href="${{ inputs.sonarMediumUrl }}"><code>${{ inputs.sonarMedium }}</code></a> ${{ inputs.sonarMediumEmojiMark }}</li>
                 <li>🟦 <strong>LOW:</strong> <a href="${{ inputs.sonarLowUrl }}"><code>${{ inputs.sonarLow }}</code></a> ${{ inputs.sonarLowEmojiMark }}</li>
                 <li>ℹ️<strong>INFO:</strong> <a href="${{ inputs.sonarInfoUrl }}"><code>${{ inputs.sonarInfo }}</code></a> ${{ inputs.sonarInfoEmojiMark }}</li>
-                <li>🌐 <a href="${{ inputs.sonarOpenIssuesDashboardURL }}"><code>View SonarCloud Open Issues Breakdown Dashboard</code></a></li>
               </ul>
             </li>
           </ul>
-          <h3>📦 Module Severity Breakdown</h3>
+          <h3>📦 Module-Wise Severity Breakdown</h3>
           ${{ inputs.EMAIL_MODULE_SEV_AGG_TABLE }}
-          <h3>🔗 Useful Links</h3>
+          <h3>🔗 Links - SonarCloud, GitHUb</h3>
           <ul>
-            <li>🌐 <a href="${{ inputs.sonarOverallCodeDashBoardURL }}">SonarCloud Overall Code Dashboard (All Open Issues)</a></li>
-            <li>🌐 <a href="${{ inputs.sonarOpenIssuesDashboardURL }}">SonarCloud Open Issues Breakdown (Severity-Wise) Dashboard</a></li>
-            <li>🌐 <a href="https://github.com/${{ github.repository }}/commit/${{ inputs.FULL_SHA }}">View Commit (SHA=${{ inputs.SHORT_SHA }})</a></li>
-            <li>🌐 <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Download Artifacts from Hygiene Check Job </a></li>
+            <li>🌐 <a href="${{ inputs.sonarOverallCodeDashBoardURL }}">SonarCloud ${{ inputs.BRANCH_EXECUTED }} Branch Summary - All Open Issues</a></li>
+            <li>🌐 <a href="${{ inputs.sonarOpenIssuesDashboardURL }}">SonarCloud Open Issues Dashboard - Severity-Wise Breakdown</a></li>
+            <li>🌐 <a href="https://github.com/${{ github.repository }}/commit/${{ inputs.FULL_SHA }}">View Commit - SHA=${{ inputs.SHORT_SHA }}</a></li>
+            <li>🌐 <a href="${{ inputs.ARTIFACT_URL }}">Download Hygiene Reports (Run: ${{ github.run_id }})</a></li>
+
+            
           </ul>
           <h3>📌 Next Steps - Dynamic</h3>
           <ul>
-            ${{ steps.thresholds.outputs.NextStepsHtml }}
+            ${{ inputs.NextStepsHtml }}
           </ul>
           <h3>📜 Job Execution Info</h3>
           <ul>
             <li>Triggered by:${{ inputs.TRIGGER_INFO }}</li>
-            <li>Last Commit: ${{ inputs.COMMIT_MSG }} by ${{ inputs.COMMIT_AUTHOR }}</li>
+            <li>Last Commit was by: ${{ inputs.COMMIT_AUTHOR }} with Commit Message: ${{ inputs.COMMIT_MSG }}</li>
             <li>Commit Date: ${{ inputs.COMMIT_DATE }} (IST)</li>
             <li>Job Duration: ${{ inputs.formattedDuration }}</li>
             <li>Start: ${{ inputs.startTime }} | End: ${{ inputs.endTime }}</li>

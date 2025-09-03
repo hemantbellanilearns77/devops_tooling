@@ -89,6 +89,7 @@ runs:
         $LAST_COMMIT_AUTHOR = git log -1 --pretty=%an
         $COMMIT_MSG = $LAST_COMMIT_MSG
         $COMMIT_AUTHOR = $LAST_COMMIT_AUTHOR
+        $prDetected=$false
         
         
         $DEFAULT_BRANCH = "${{ github.event.repository.default_branch }}"
@@ -110,29 +111,30 @@ runs:
             $prMergePattern = '(Merge|Merged)\s+(pull request|PR)'
         
             if ($LAST_COMMIT_MSG -imatch $prMergePattern) {
-            Write-Host "⚡ Merge commit detected via PR → querying PR info"
+              Write-Host "⚡ Merge commit detected via PR → querying PR info"
         
-            if (-not $env:GITHUB_TOKEN) {
-            Write-Host "❌ GITHUB_TOKEN not available. Cannot query PR info."
-            $SRC_BRANCH = $TGT_BRANCH
-            } else {
-            try {
-            # Query PR for source branch using commit SHA
-            $prResponse = gh api repos/${{ github.repository }}/commits/$commitSHA/pulls --jq '.[0].head.ref' 2>$null
+              if (-not $env:GITHUB_TOKEN) {
+                Write-Host "❌ GITHUB_TOKEN not available. Cannot query PR info."
+                $SRC_BRANCH = $TGT_BRANCH
+              } else {
+              try {
+                # Query PR for source branch using commit SHA
+                $prResponse = gh api repos/${{ github.repository }}/commits/$commitSHA/pulls --jq '.[0].head.ref' 2>$null
+            
+                if (-not [string]::IsNullOrEmpty($prResponse)) {
+                  $SRC_BRANCH = $prResponse
+                  $prDetected = $true
+                  Write-Host "✅ Detected PR source branch: $SRC_BRANCH"
         
-            if (-not [string]::IsNullOrEmpty($prResponse)) {
-            $SRC_BRANCH = $prResponse
-            Write-Host "✅ Detected PR source branch: $SRC_BRANCH"
-          } else {
-            $SRC_BRANCH = $TGT_BRANCH
-            Write-Host "⚡ Could not detect PR → assuming direct commit"
-          }
-          } catch {
-            Write-Host "⚠️ Error querying PR info: $_"
-            $SRC_BRANCH = $TGT_BRANCH
-          }
-          }
-        
+                } else {
+                  $SRC_BRANCH = $TGT_BRANCH
+                  Write-Host "⚡ Could not detect PR → assuming direct commit"
+                } 
+              } catch {
+                Write-Host "⚠️ Error querying PR info: $_"
+                $SRC_BRANCH = $TGT_BRANCH
+              }
+            } # ebd of if last commit has prmergoattern
           } else {
             # Regular direct commit
             Write-Host "⚡ Regular direct commit on $TGT_BRANCH"
@@ -144,27 +146,27 @@ runs:
         Write-Host "✅ SRC_BRANCH=$SRC_BRANCH | TGT_BRANCH=$TGT_BRANCH | BRANCH_EXECUTED=$BRANCH_EXECUTED"
 
         $REASON = ""
+        $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
         
         # Case 1: Commit message override → always take precedence
-        if ($LAST_COMMIT_MSG -match "--skip-sonar") {
+        if ($LAST_COMMIT_MSG -match $skipSonarPattern) {
           $SKIP_FLAG = "--skip-sonar"
-          $REASON = "⚡ Commit message override → SKIP Sonar"
+          $REASON = "⚡ PR Merge / Push Commit message override → SKIP Sonar"
         }
         # Case 2: Scheduled run on main
         elseif ($TRIGGER_EVENT -ieq "schedule") { 
           $SKIP_FLAG = ""
           $REASON = "⚡ Scheduled run → RUN Sonar"
         }
-        # Case 3: Push to main
+        # Case 3: Manual workflow_dispatch 
           elseif ($TRIGGER_EVENT -ieq "workflow_dispatch") {
-          $SKIP_FLAG = ""
-          $REASON = "⚡ Manual workflow_dispatch → RUN Sonar"
-        } elseif ($TRIGGER_EVENT -ieq "push" -and $TGT_BRANCH -ieq "main") {
-          if ($LAST_COMMIT_MSG -imatch $prMergePattern) {
-          $REASON = "⚡ PR merged into main → RUN Sonar"
-        } else {
-          $REASON = "⚡ Direct commit to main → RUN Sonar"
-        }
+          if($TGT_BRANCH -ieq $DEFAULT_BRANCH) {
+            $SKIP_FLAG = ""
+            $REASON = "⚡ Manual workflow_dispatch on default branch (main) with last commit message NOT having skipsonar pattern string, therefore → RUN Sonar"
+          } else {
+            $SKIP_FLAG = "--skip-sonar"
+            $REASON = "⚡ Manual workflow_dispatch on non-default branch (i.e. non-main), therefore → SKIP Sonar"
+          }
         } else {
           $REASON = "⚡ Default → SKIP Sonar (SRC=$SRC_BRANCH, TGT=$TGT_BRANCH)"
         }

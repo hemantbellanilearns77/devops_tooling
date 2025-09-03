@@ -28,6 +28,9 @@ inputs:
   BRANCH_EXECUTED:
     required: true
     description: ""
+  ARTIFACT_URL:
+    required: true
+    description: ""
 
 outputs:
   sonarExecutionNote:
@@ -74,7 +77,7 @@ runs:
           -sonarLow ${{ steps.metrics.outputs.sonarLow }} `
           -sonarInfo ${{ steps.metrics.outputs.sonarInfo }} `
           -sonarCoverage ${{ steps.metrics.outputs.sonarCoverage }} `
-          -jobStatus ${{ job.status }}
+          -jobStatus ${{ steps.metrics.outcome }}
 
       ###################################
       # EXECUTION INFO COMPOSITE CALL
@@ -97,6 +100,7 @@ runs:
         Write-Host "✅ Start Time after execution-info: ${{ steps.execution-info.outputs.startTime }}"
         Write-Host "✅ End Time after execution-info:   ${{ steps.execution-info.outputs.endTime }}"
         Write-Host "✅ Duration after execution-info:   ${{ steps.execution-info.outputs.formattedDuration }}"
+        Write-Host "✅ ARTIFACT_URL:   ${{ inputs.ARTIFACT_URL }}"
       shell: pwsh
 
     ##########################
@@ -105,8 +109,15 @@ runs:
     - name: 📧 Send Hygiene Summary Email
       uses: ./.github/actions/publish-email-summary
       with:
-        HygieneCheckStatus: ${{ steps.thresholds.outputs.HygieneCheckStatus }}
+
         BRANCH_EXECUTED: ${{ inputs.BRANCH_EXECUTED }}
+        COMMIT_MSG: ${{ inputs.COMMIT_MSG }}
+        COMMIT_AUTHOR: ${{ inputs.COMMIT_AUTHOR }}
+        ARTIFACT_URL: ${{ inputs.ARTIFACT_URL }}
+
+        HygieneCheckStatus: ${{ steps.thresholds.outputs.HygieneCheckStatus }}
+        NextStepsHtml: ${{ steps.thresholds.outputs.NextStepsHtml }}
+
         sonarCoverage: ${{ steps.metrics.outputs.sonarCoverage }}
         coverageBar: ${{ steps.metrics.outputs.coverageBar }}
         checkstyleCount: ${{ steps.metrics.outputs.checkstyleCount }}
@@ -131,12 +142,14 @@ runs:
         sonarInfoEmojiMark: ${{ steps.metrics.outputs.sonarInfoEmojiMark }}
         sonarOpenIssuesDashboardURL: ${{ steps.metrics.outputs.sonarOpenIssuesDashboardURL }}
         sonarOverallCodeDashBoardURL: ${{ steps.metrics.outputs.sonarOverallCodeDashBoardURL }}
-        EMAIL_MODULE_SEV_AGG_TABLE: ${{ env.EMAIL_MODULE_SEV_AGG_TABLE }}
+        # EMAIL_MODULE_SEV_AGG_TABLE: ${{ env.EMAIL_MODULE_SEV_AGG_TABLE }}
+        EMAIL_MODULE_SEV_AGG_TABLE: ${{ steps.metrics.outputs.EMAIL_MODULE_SEV_AGG_TABLE }}
+        # EMAIL_BREAKDOWN: ${{ steps.metrics.outputs.EMAIL_BREAKDOWN }}
+
+
         FULL_SHA: ${{ steps.execution-info.outputs.FULL_SHA }}
         SHORT_SHA: ${{ steps.execution-info.outputs.SHORT_SHA }}
         TRIGGER_INFO: ${{ steps.execution-info.outputs.TRIGGER_INFO }}
-        COMMIT_MSG: ${{ steps.execution-info.outputs.COMMIT_MSG }}
-        COMMIT_AUTHOR: ${{ steps.execution-info.outputs.COMMIT_AUTHOR }}
         COMMIT_DATE: ${{ steps.execution-info.outputs.COMMIT_DATE }}
         startTime: ${{ steps.execution-info.outputs.startTime }}
         endTime: ${{ steps.execution-info.outputs.endTime }}
