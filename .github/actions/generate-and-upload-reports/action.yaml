@@ -23,14 +23,15 @@ runs:
       shell: pwsh
       run: |
         $SKIP_FLAG = "${{ inputs.SKIP_FLAG }}"
-        
         # --- DEBUG: show what is being passed
         Write-Host "🧪 SKIP_FLAG received in composite: '$SKIP_FLAG'"
           if ([string]::IsNullOrWhiteSpace($SKIP_FLAG)) {
-          Write-Host "⚠️ SKIP_FLAG is empty — defaulting to ''"
-          $SKIP_FLAG = ""
+          Write-Host "⚠️ SKIP_FLAG is empty — defaulting to 'Hello There'"
+          $SKIP_FLAG = "Hello There"
         }
         Write-Host "🧪 SKIP_FLAG as finally being passed to batch script in composite: '$SKIP_FLAG'"
+        # Write-Host the environment variable directly to ensure its value is printed.
+        Write-Host "🧪 Bash path from previous step: '$env:SONAR_SCANNER_BIN'"
         & scripts/hygiene-check-analysis.bat githubactions $SKIP_FLAG
 
     ##########################
@@ -41,10 +42,12 @@ runs:
       id: upload_reports
       uses: actions/upload-artifact@v4
       with:
-        name: hygiene-reports
+        name: hygiene-check-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
         path: |
-          reports/**
           logs/**
+          reports/**
+        compression-level: 9 # Set to '9' for best compression
+          
 
     - name: Set Artifact Download URL
       id: artifact_url

@@ -4,7 +4,12 @@
 name: "Download Hygiene Check Tools"
 description: "Download tools that will evaluate hygiene health of the project"
 inputs: { }  # If you don't have any inputs, you can leave it empty or remove this line.
-outputs: { }  # If you don't have any outputs, you can leave it empty or remove this line.
+# outputs: { }  # If you don't have any outputs, you can leave it empty or remove this line.
+outputs:
+    scanner_bin_win:
+      description: "The Windows-formatted path to the scanner's bin directory"
+      value: ${{ steps.convert_path.outputs.scanner_bin_win }}
+
 runs:
   using: "composite"
   steps:
@@ -44,15 +49,47 @@ runs:
         curl -L -o tools\junit-console\junit-platform-console-standalone-1.13.0.jar https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.13.0/junit-platform-console-standalone-1.13.0.jar
       shell: cmd
 
-    ##########################
-    # DOWNLOAD SONAR-SCANNER
-    ##########################
+#    ##########################
+#    # DOWNLOAD SONAR-SCANNER
+#    ##########################
+#
+#    - name: Download and Setup SonarScanner - sonar-scanner-cli-7.2.0.5079-windows-x64
+#      shell: bash
+#      run: |
+#        curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.2.0.5079-windows-x64.zip
+#        mkdir tools/sonar-scanner
+#        unzip sonar-scanner.zip -d tools/sonar-scanner
+#        echo "SONAR_SCANNER_HOME=$PWD/tools/sonar-scanner-cli-7.2.0.5079-windows-x64" >> $GITHUB_ENV
+#        echo "$PWD/tools/sonar-scanner/sonar-scanner-cli-7.2.0.5079-windows-x64" >> $GITHUB_PATH
 
-    - name: ?? Download and Setup SonarScanner 7.1.0.4889
+      ##########################
+      # DOWNLOAD SONAR-SCANNER
+      ##########################
+    - name: Download and Setup Latest SonarScanner CLI
+      id: download_scanner_step # Add an ID to the step to reference its outputs
       shell: bash
       run: |
-        curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-7.1.0.4889-windows-x64.zip
-        mkdir tools/sonar-scanner
+        LATEST_SCANNER_VERSION="7.2.0.5079"
+        DOWNLOAD_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${LATEST_SCANNER_VERSION}-windows-x64.zip"
+        
+        curl -sSLo sonar-scanner.zip "${DOWNLOAD_URL}"
+        mkdir -p tools/sonar-scanner
         unzip sonar-scanner.zip -d tools/sonar-scanner
-        echo "SONAR_SCANNER_HOME=$PWD/tools/sonar-scanner-7.1.0.4889-windows" >> $GITHUB_ENV
-        echo "$PWD/tools/sonar-scanner/sonar-scanner-7.1.0.4889-windows/bin" >> $GITHUB_PATH
+        
+        EXTRACTED_FOLDER=$(ls tools/sonar-scanner | grep "sonar-scanner")
+        
+        echo "scanner_bin_dir=$PWD/tools/sonar-scanner/${EXTRACTED_FOLDER}/bin" >> "$GITHUB_OUTPUT" # Save Bash path to output
+        echo "Successfully found scanner bin directory: tools/sonar-scanner/${EXTRACTED_FOLDER}/bin"
+
+    - name: Convert Path to Windows Format and Save to File
+      shell: pwsh
+      id: convert_path
+      run: |
+          $bashPath = "${{ steps.download_scanner_step.outputs.scanner_bin_dir }}"
+          Write-Host "Bash Path to convert: $bashPath"
+          
+          $winPath = (cmd.exe /c "cygpath -w `"$bashPath`"").Trim()
+          Write-Host "Converted Windows Path: $winPath"
+          
+          # "SONAR_SCANNER_BIN=$winPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf-8 -Append
+            "scanner_bin_win=$winPath" | Out-File -FilePath "$env:GITHUB_OUTPUT" -Encoding utf-8 -Append

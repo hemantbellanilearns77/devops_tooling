@@ -31,6 +31,9 @@ inputs:
   ARTIFACT_URL:
     required: true
     description: ""
+  STAGE_MERGE_SKIPPED:
+    required: true
+    description: "Indicates if stage merge was skipped"
 
 outputs:
   sonarExecutionNote:
@@ -58,6 +61,9 @@ runs:
         SKIP_FLAG: ${{ inputs.SKIP_FLAG }}
         SONAR_PROJECT_KEY: ${{ env.SONAR_PROJECT_KEY }}
         SONAR_ORG: ${{ env.SONAR_ORG }}
+        BRANCH_EXECUTED: ${{ inputs.BRANCH_EXECUTED }}
+        REPOSITORY: ${{ github.repository }}
+        STAGE_VS_MAIN_STATE: ${{ inputs.STAGE_VS_MAIN_STATE }}
       run: |
         pwsh -File .\.github\scripts\collect-compute-metrics.ps1
 
@@ -114,6 +120,7 @@ runs:
         COMMIT_MSG: ${{ inputs.COMMIT_MSG }}
         COMMIT_AUTHOR: ${{ inputs.COMMIT_AUTHOR }}
         ARTIFACT_URL: ${{ inputs.ARTIFACT_URL }}
+        STAGE_VS_MAIN_STATE: ${{ inputs.STAGE_VS_MAIN_STATE }}
 
         HygieneCheckStatus: ${{ steps.thresholds.outputs.HygieneCheckStatus }}
         NextStepsHtml: ${{ steps.thresholds.outputs.NextStepsHtml }}
