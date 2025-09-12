@@ -1,3 +1,6 @@
+        $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
+        $skipFlagVal="$env:SKIP_FLAG"
+        Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $skipFlagVal"
         ############################################################
         # === Parse JaCoCo XML (Overall) ===
         ############################################################
@@ -51,12 +54,42 @@
          Write-Error "⚠ SONAR_TOKEN is empty!"
          exit 1
         }
-        $url = "https://sonarcloud.io/api/issues/search?issueStatuses=OPEN,CONFIRMED&id=$projectKey&organization=$projectOrg"
+        # $url = "https://sonarcloud.io/api/issues/search?issueStatuses=OPEN,CONFIRMED&id=$projectKey&organization=$projectOrg"
+        $url = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&issueStatuses=OPEN,CONFIRMED&facets=impactSeverities"
         Write-Host "?? Calling SonarCloud API: $url"
+        $impactSeveritiesCounts = @{
+             BLOCKER = 0
+             HIGH    = 0
+             MEDIUM  = 0
+             LOW     = 0
+             INFO    = 0
+        }
+        $blocker = $impactSeveritiesCounts["BLOCKER"]
+        $high    = $impactSeveritiesCounts["HIGH"]
+        $medium  = $impactSeveritiesCounts["MEDIUM"]
+        $low     = $impactSeveritiesCounts["LOW"]
+        $info    = $impactSeveritiesCounts["INFO"]
+
         try {
          $response = Invoke-WebRequest -Uri $url -Method Get
          $body = $response.Content
-        
+         $json = $body | ConvertFrom-Json
+         $impactSeveritiesCounts = @{
+             BLOCKER = 0
+             HIGH    = 0
+             MEDIUM  = 0
+             LOW     = 0
+             INFO    = 0
+         }
+
+         foreach ($val in $json.facets[0].values) {
+                  $impactSeveritiesCounts[$val.val] = $val.count
+          }
+          $blocker = $impactSeveritiesCounts["BLOCKER"]
+          $high    = $impactSeveritiesCounts["HIGH"]
+          $medium  = $impactSeveritiesCounts["MEDIUM"]
+          $low     = $impactSeveritiesCounts["LOW"]
+          $info    = $impactSeveritiesCounts["INFO"]
          if ($body -match '"total"\s*:\s*(\d+)') {
            $totalSonarFetchedIssues = $matches[1]
            Write-Host "? Total SonarCloud Issues (OPEN): $totalSonarFetchedIssues"
@@ -72,8 +105,10 @@
         ############################################################
         # === Derive Sonar Presentation Variables ===
         ############################################################
-        Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $env:SKIP_FLAG"
-        if ($env:SKIP_FLAG -match "--skip-sonar") {
+        # Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $env:SKIP_FLAG"
+        # Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $skipFlagVal"
+        
+        if ($skipFlagVal -match $skipSonarPattern) {
             $sonarExecutionNote = "SKIPPED ⚡ (manual override)"
             $sonarIssuesNote    = "from last successful analysis : $totalSonarFetchedIssues"
         } else {
@@ -151,12 +186,12 @@
         }
         $coverageBar = Get-AsciiBar $sonarCoverage
         
+<#         ###########################################################
+        # === Fetch Overall Impact Severity Breakdown (UI-Aligned) ===
         ###########################################################
-        # === Fetch Overall Severity Breakdown (UI-Aligned) ===
-        ###########################################################
-         function Fetch-SonarSeverity($severity) {
-          $url = "https://sonarcloud.io/api/issues/search?severities=$severity&issueStatuses=OPEN,CONFIRMED&organization=$projectOrg&id=$projectKey"
-        
+         function Fetch-SonarSeverity($impactSeverities) {
+          $url = "https://sonarcloud.io/api/issues/search?impactSeverities=$impactSeverities&issueStatuses=OPEN,CONFIRMED&organization=$projectOrg&id=$projectKey"
+
           try {
             $resp = Invoke-WebRequest -Uri $url -Headers $headers -Method Get
             $json = $resp.Content | ConvertFrom-Json
@@ -166,8 +201,23 @@
             exit 1
           }
         }
-        
-        $blocker = Fetch-SonarSeverity "BLOCKER" 
+        $blocker = Fetch-SonarSeverity "BLOCKER"
+        $high = Fetch-SonarSeverity "HIGH"
+        $medium = Fetch-SonarSeverity "MEDIUM"
+        $low = Fetch-SonarSeverity "LOW"
+        $info = Fetch-SonarSeverity "INFO"
+        #>
+        ############################################################
+        # === Generate Severity URLs (global and per module) ===
+        ############################################################
+        $severityLinks = @{
+          BLOCKER = "https://sonarcloud.io/project/issues?impactSeverities=BLOCKER&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
+          HIGH    = "https://sonarcloud.io/project/issues?impactSeverities=HIGH&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
+          MEDIUM  = "https://sonarcloud.io/project/issues?impactSeverities=MEDIUM&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
+          LOW     = "https://sonarcloud.io/project/issues?impactSeverities=LOW&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
+          INFO    = "https://sonarcloud.io/project/issues?impactSeverities=INFO&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
+        }
+<#         $blocker = Fetch-SonarSeverity "BLOCKER"
         $high = Fetch-SonarSeverity "CRITICAL"
         $medium = Fetch-SonarSeverity "MAJOR"
         $low = Fetch-SonarSeverity "MINOR"
@@ -181,8 +231,8 @@
           MEDIUM  = "https://sonarcloud.io/project/issues?severities=MAJOR&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
           LOW     = "https://sonarcloud.io/project/issues?severities=MINOR&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
           INFO    = "https://sonarcloud.io/project/issues?severities=INFO&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
-        }
-        
+        } #>
+        Write-Host "✅ Counts as extracted from API Call response after fetching total impact severities is: : $impactSeveritiesCounts"
         ############################################################
               # === Generate URLS ===
         ############################################################
@@ -279,8 +329,9 @@
         "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         
         $emailModuleSevAggTable=""
-        $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
-        if ($env:SKIP_FLAG -imatch $skipSonarPattern) {
+        # $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
+        # if ($env:SKIP_FLAG -imatch $skipSonarPattern) {
+        if ($skipFlagVal -imatch $skipSonarPattern) {
           $emailModuleSevAggTable="<code>⚡ Unavailable — Sonar was SKIPPED (manual override)</code>"
           # echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV
           "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -388,11 +439,15 @@
                 if ($null -ne $moduleAgg[$matchedModule]) {
                 # Write-Output "✅ moduleAgg has a row for: $matchedModule and can be populated with severity numbers"
         
-                # now fetch severity-wise and then aggregate it
-                  $sevList = "BLOCKER,CRITICAL,MAJOR,MINOR,INFO"
-                  $sevUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&severities=$sevList&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
-                  $response = Invoke-WebRequest -Uri $sevUrl -Headers $headers -Method Get | ConvertFrom-Json
-        
+                # now fetch impact-severity-wise and then aggregate it
+                  # $sevList = "BLOCKER,CRITICAL,MAJOR,MINOR,INFO"
+                  # $sevList = "BLOCKER,HIGH,MEDIUM,LOW,INFO"
+                  # $sevUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&severities=$sevList&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
+                  # $impactSevUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&impactSeverities=$sevList&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
+                  $dirIssuesUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
+                  Write-Output "✅ Calling Directory issues url for: $dir as : $dirIssuesUrl"
+                  $response = Invoke-WebRequest -Uri $dirIssuesUrl -Headers $headers -Method Get | ConvertFrom-Json
+
                   # Initialize counts
                   $counts = @{
                   BLOCKER = 0
@@ -402,15 +457,37 @@
                   INFO    = 0
                 }
         
-                  foreach ($issue in $response.issues) {
+<#                  foreach ($issue in $response.issues) {
                   switch ($issue.severity) {
-                  "BLOCKER"  { $counts.BLOCKER++ }
-                  "CRITICAL" { $counts.HIGH++ }
-                  "MAJOR"    { $counts.MEDIUM++ }
-                  "MINOR"    { $counts.LOW++ }
-                  "INFO"     { $counts.INFO++ }
+                      "BLOCKER"  { $counts.BLOCKER++ }
+                      "CRITICAL" { $counts.HIGH++ }
+                      "MAJOR"    { $counts.MEDIUM++ }
+                      "MINOR"    { $counts.LOW++ }
+                      "INFO"     { $counts.INFO++ }
+                    }
+                } #>
+                foreach ($issue in $response.issues) {
+                    foreach ($impact in $issue.impacts) {
+                      switch ($impact.severity) {
+                        "BLOCKER"   { $counts.BLOCKER++ }
+                          "HIGH"    { $counts.HIGH++ }
+                          "MEDIUM"  { $counts.MEDIUM++ }
+                          "LOW"     { $counts.LOW++ }
+                          "INFO"    { $counts.INFO++ }
+                        }
+                    }
                 }
-                }
+                $totalIssuesDir = ($counts.BLOCKER + $counts.HIGH + $counts.MEDIUM + $counts.LOW + $counts.INFO)
+                Write-Output "✅ Total issues for : $dir are : $totalIssuesDir"
+<#                 foreach ($issue in $response.issues) {
+                  switch ($issue.severity) {
+                      "BLOCKER"  { $counts.BLOCKER++ }
+                      "HIGH" { $counts.HIGH++ }
+                      "MEDIUM"    { $counts.MEDIUM++ }
+                      "LOW"    { $counts.LOW++ }
+                      "INFO"     { $counts.INFO++ }
+                    }
+                } #>
         
                 # Now add to moduleAgg
                   $moduleAgg[$matchedModule]["BLOCKER"] += $counts.BLOCKER
@@ -453,7 +530,7 @@
         
           # Step 3: Pretty-print module severity breakdown with conditional icons
           if ($moduleAgg.Count -gt 0) {
-          echo "### 📦 SonarCloud Module Severity Breakdown" >> $env:GITHUB_STEP_SUMMARY
+          echo "### 📦 SonarCloud Module Impact-Severity" >> $env:GITHUB_STEP_SUMMARY
           echo "| Module | 🟥 BLOCKER | 🟧 HIGH | 🟨 MEDIUM | 🟦 LOW  | ℹ INFO |" >> $env:GITHUB_STEP_SUMMARY
           echo "|--------|------------|---------|----------|--------|--------|" >> $env:GITHUB_STEP_SUMMARY
           foreach ($mod in $moduleAgg.Keys) {

@@ -136,14 +136,6 @@ runs:
         subject: >-
           ${{ inputs.HygieneCheckStatus }} | ${{ github.workflow }} | ${{ github.repository }} | Branch: ${{ inputs.BRANCH_EXECUTED }} | Run #${{ github.run_id }} | Duration: ${{ inputs.formattedDuration }}
             ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
-
-#          ${{ inputs.HygieneCheckStatus }}
-#          | ${{ github.workflow }}
-#          | ${{ github.repository }}
-#          | RunID: ${{ github.run_id }}
-#          | (branch: ${{ inputs.BRANCH_EXECUTED }})
-#          | Duration: ${{ inputs.formattedDuration }}
-#          ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
         to: ${{ env.EMAIL_RECIPIENT }}
         from: GitHub Hygiene Bot <${{ env.EMAIL_RECIPIENT }}>
         html_body: |
@@ -176,11 +168,11 @@ runs:
                 <li>🟧 <strong>HIGH:</strong> <a href="${{ inputs.sonarHighUrl }}"><code>${{ inputs.sonarHigh }}</code></a> ${{ inputs.sonarHighEmojiMark }}</li>
                 <li>🟨 <strong>MEDIUM:</strong> <a href="${{ inputs.sonarMediumUrl }}"><code>${{ inputs.sonarMedium }}</code></a> ${{ inputs.sonarMediumEmojiMark }}</li>
                 <li>🟦 <strong>LOW:</strong> <a href="${{ inputs.sonarLowUrl }}"><code>${{ inputs.sonarLow }}</code></a> ${{ inputs.sonarLowEmojiMark }}</li>
-                <li>ℹ️<strong>INFO:</strong> <a href="${{ inputs.sonarInfoUrl }}"><code>${{ inputs.sonarInfo }}</code></a> ${{ inputs.sonarInfoEmojiMark }}</li>
+                <li>ℹ️ <strong>INFO:</strong> <a href="${{ inputs.sonarInfoUrl }}"><code>${{ inputs.sonarInfo }}</code></a> ${{ inputs.sonarInfoEmojiMark }}</li>
               </ul>
             </li>
           </ul>
-          <h3>📦 Module-Wise Severity Breakdown</h3>
+          <h3>📦 Module-Wise Impact-Severity</h3>
           ${{ inputs.EMAIL_MODULE_SEV_AGG_TABLE }}
           <h3>🔗 Links - SonarCloud, GitHUb</h3>
           <ul>
