@@ -3,8 +3,10 @@
 ####################################################
 name: "Download Hygiene Check Tools"
 description: "Download tools that will evaluate hygiene health of the project"
-inputs: { }  # If there aren't any inputs, leave it empty or remove this line.
-# outputs: { }  # If you don't have any outputs, you can leave it empty or remove this line.
+inputs:
+  SKIP_FLAG:
+    required: true
+    description: ""
 outputs:
     scanner_bin_win:
       description: "The Windows-formatted path to the scanner's bin directory"
@@ -41,13 +43,16 @@ runs:
       ##########################
 
     - name: ?? Download JaCoCo + JUnit Console
+      id: download_jacoco_junit_console
+      shell: cmd
+      if: ${{ inputs.SKIP_FLAG != '--skip-sonar' }}
       run: |
         mkdir tools\jacoco-0.8.13\lib
         curl -L -o tools\jacoco-0.8.13\lib\jacocoagent.jar https://repo1.maven.org/maven2/org/jacoco/org.jacoco.agent/0.8.13/org.jacoco.agent-0.8.13-runtime.jar
         curl -L -o tools\jacoco-0.8.13\lib\jacococli.jar https://repo1.maven.org/maven2/org/jacoco/org.jacoco.cli/0.8.13/org.jacoco.cli-0.8.13-nodeps.jar
         mkdir tools\junit-console
         curl -L -o tools\junit-console\junit-platform-console-standalone-1.13.0.jar https://repo1.maven.org/maven2/org/junit/platform/junit-platform-console-standalone/1.13.0/junit-platform-console-standalone-1.13.0.jar
-      shell: cmd
+      
 
       ##########################
       # DOWNLOAD SONAR-SCANNER
@@ -55,6 +60,7 @@ runs:
     - name: Download and Setup Latest SonarScanner CLI
       id: download_scanner_step # Add an ID to the step to reference its outputs
       shell: bash
+      if: ${{ inputs.SKIP_FLAG != '--skip-sonar' }}
       run: |
         LATEST_SCANNER_VERSION="7.2.0.5079"
         DOWNLOAD_URL="https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${LATEST_SCANNER_VERSION}-windows-x64.zip"
@@ -71,6 +77,7 @@ runs:
     - name: Convert Path to Windows Format and Save to File
       shell: pwsh
       id: convert_path
+      if: ${{ inputs.SKIP_FLAG != '--skip-sonar' }}
       run: |
           $bashPath = "${{ steps.download_scanner_step.outputs.scanner_bin_dir }}"
           Write-Host "Bash Path to convert: $bashPath"

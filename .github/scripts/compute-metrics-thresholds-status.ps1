@@ -1,27 +1,13 @@
         $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
         $skipFlagVal="$env:SKIP_FLAG"
+        Start-Sleep -Seconds $env:SONAR_FETCH_SLEEP_TIME
+        $projectKey = $env:SONAR_PROJECT_KEY
+        $projectOrg = $env:SONAR_ORG
+        $branch = $env:BRANCH_EXECUTED
+        $repository = $env:REPOSITORY
         Write-Host "✅ SKIP_FLAG as received in publish summary composite is: $skipFlagVal"
-        ############################################################
-        # === Parse JaCoCo XML (Overall) ===
-        ############################################################
-        $xml = Select-Xml -Path reports\jacoco\jacoco-latest.xml -XPath "//report/counter[@type='INSTRUCTION']"
-        $missed = [int]$xml.Node.missed
-        $covered = [int]$xml.Node.covered
-        $total = $missed + $covered
-        if ($total -gt 0) {
-          $jacocoCoverage = [math]::Round(100 * $covered / $total, 2)
-        } else {
-          $jacocoCoverage = 0
-        }
-        
-        function Get-AsciiBar($percent) {
-        
-          $blocks = 25
-          $filled = [math]::Round($blocks * $percent / 100)
-          $empty = $blocks - $filled
-          return ('█' * $filled) + ('░' * $empty)
-        }
-        
+
+
         ############################################################
         # === Parse Checkstyle & PMD Reports ===
         ############################################################
@@ -31,7 +17,7 @@
             $checkstyleViolations += (Get-Content $_ | Where-Object { $_.Trim() -ne "" }).Count
           }
         }
-        
+
         $pmdViolations = 0
         if (Test-Path "reports/pmd") {
           Get-ChildItem reports/pmd/*.txt | ForEach-Object {
@@ -39,22 +25,98 @@
           }
         }
         $totalViolations = $checkstyleViolations + $pmdViolations
-        
+
+       ############################################################
+       # === Compute Coverage, CoverageBar, Coverage Status  ===
+       ############################################################
+       if ($skipFlagVal -imatch $skipSonarPattern) {
+            ############################################################
+            # === Fetch SonarCloud Coverage Metrics ===
+            ############################################################
+            $encodedAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($env:SONAR_TOKEN):"))
+            $headers = @{ Authorization = "Basic $encodedAuth" }
+
+            function Get-SonarMetric($metricKey) {
+              $url = "https://sonarcloud.io/api/measures/component?component=$projectKey&metricKeys=$metricKey"
+              # Write-Host "Coverage Fetch URL is $url"
+              try {
+                $resp = Invoke-WebRequest -Uri $url -Method Get
+                $json = $resp.Content | ConvertFrom-Json
+                $returnVal = [double]$json.component.measures[0].value
+                return $returnVal
+              } catch {
+                Write-Error "⚠ API call failed: $_"
+                exit 1
+              }
+            }
+
+            $sonarCoverage = Get-SonarMetric "coverage"
+            Write-Output "Sonar-style Coverage as fetched from SonarCloud is $sonarCoverage"
+        }
+        else {
+            ############################################################
+            # === Parse JaCoCo XML (Overall) ===
+            ############################################################
+
+            $lineNode   = Select-Xml -Path reports\jacoco\jacoco-latest.xml -XPath "//report/counter[@type='LINE']"
+            $branchNode = Select-Xml -Path reports\jacoco\jacoco-latest.xml -XPath "//report/counter[@type='BRANCH']"
+
+            $lineMissed   = [int]$lineNode.Node.missed
+            $lineCovered  = [int]$lineNode.Node.covered
+            $branchMissed = [int]$branchNode.Node.missed
+            $branchCovered= [int]$branchNode.Node.covered
+
+            $total = $lineMissed + $lineCovered + $branchMissed + $branchCovered
+            if ($total -gt 0) {
+                $jacocoCoverage = [math]::Round(100 * ($lineCovered + $branchCovered) / $total, 1)
+            } else {
+                $jacocoCoverage = 0.0
+            }
+            $sonarCoverage = $jacocoCoverage
+            Write-Output "Sonar-style Coverage as fetched from latest Jacoco Execution in runner is $sonarCoverage %"
+        }
+        function Get-AsciiBar($percent) {
+
+          $blocks = 27
+          $filled = [math]::Round($blocks * $percent / 100)
+          $empty = $blocks - $filled
+          $AsciiBar = ('█' * $filled) + ('░' * $empty)
+          # return ('█' * $filled) + ('░' * $empty)
+          return $AsciiBar
+        }
+
+        $coverageBar = Get-AsciiBar $sonarCoverage
+
+        function FormatCoverageStatus($actualCoverage, $minNeeded) {
+            if ($actualCoverage -is [array]) {
+                $actualCoverage = $actualCoverage[0]
+            }
+            # sanitize and cast
+            $actualCoverage = [double]($actualCoverage -replace '[^0-9\.]', '')
+
+            if ($actualCoverage -ge 90.00) {
+                $emoji = "🟢"
+                $note  = "(GREAT)"
+            } elseif ($actualCoverage -ge $minNeeded -and $actualCoverage -le 89.99) {
+                $emoji = "🟡"
+                $note  = "(NEARING THRESHOLD)"
+            } else {
+                $emoji = "🔴"
+                $note  = "(OVERBOARD)"
+            }
+            return "/ 100% $emoji $note"
+        }
+        $coverageStatus = FormatCoverageStatus $sonarCoverage $env:JACOCO_MIN_COVERAGE
+
         ############################################################
         # === Fetch SonarCloud Issue Count (OPEN) ===
         ############################################################
-        Start-Sleep -Seconds $env:SONAR_FETCH_SLEEP_TIME
-        
-        $projectKey = $env:SONAR_PROJECT_KEY
-        $projectOrg = $env:SONAR_ORG
-        $branch = $env:BRANCH_EXECUTED
-        $repository = $env:REPOSITORY
+
         # Confirm if token is passed
         if (-not $env:SONAR_TOKEN) {
          Write-Error "⚠ SONAR_TOKEN is empty!"
          exit 1
         }
-        # $url = "https://sonarcloud.io/api/issues/search?issueStatuses=OPEN,CONFIRMED&id=$projectKey&organization=$projectOrg"
         $url = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&issueStatuses=OPEN,CONFIRMED&facets=impactSeverities"
         Write-Host "?? Calling SonarCloud API: $url"
         $impactSeveritiesCounts = @{
@@ -98,10 +160,10 @@
            exit 1
          }
         } catch {
-         Write-Error "⚠ API call failed: $_" 
+         Write-Error "⚠ API call failed: $_"
          exit 1
         }
-        
+
         ############################################################
         # === Derive Sonar Presentation Variables ===
         ############################################################
@@ -116,7 +178,7 @@
         # --- Fetch timestamp of last analysis dynamically from SonarCloud API ---
         $apiUrl = "https://sonarcloud.io/api/project_analyses/search?project=$projectKey&ps=1"
         try {
-          $response = Invoke-RestMethod -Uri $apiUrl -Method Get 
+          $response = Invoke-RestMethod -Uri $apiUrl -Method Get
           if ($response.analyses.Count -gt 0) {
             $lastAnalysisUtc = [datetime]$response.analyses[0].date
             Write-Host "📅 Last Analysis UTC: $lastAnalysisUtc"
@@ -132,57 +194,7 @@
           $lastSonarAnalysis = "N/A"
         }
         Write-Host "📅 Last Analysis IST: $lastSonarAnalysis"
-        
-        # expose for later consumers (email etc.)
-        "sonarExecutionNote=$sonarExecutionNote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarIssuesNote=$sonarIssuesNote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "lastSonarAnalysis=$lastSonarAnalysis" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        ############################################################
-        # === Fetch SonarCloud Coverage Metrics ===
-        ############################################################
-        $encodedAuth = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("$($env:SONAR_TOKEN):"))
-        $headers = @{ Authorization = "Basic $encodedAuth" }
-        
-        function Get-SonarMetric($metricKey) {
-          $url = "https://sonarcloud.io/api/measures/component?component=$projectKey&metricKeys=coverage"
-          # Write-Host "Coverage Fetch URL is $url"
-          try {
-            $resp = Invoke-WebRequest -Uri $url -Method Get
-            $json = $resp.Content | ConvertFrom-Json
-            return $json.component.measures[0].value
-          } catch {
-            Write-Error "⚠ API call failed: $_"
-            exit 1
-          }
-        } 
-        
-        $sonarCoverage = Get-SonarMetric "coverage"
-        # Write-Output "Writing Output Coverage as fetched from Sonar is $sonarCoverage"
-        if ($sonarCoverage -ge 50) {
-          $coverageEmoji = "🟢"
-        } elseif ($sonarCoverage -ge 20) {
-          $coverageEmoji = "🟡"
-        } else {
-          $coverageEmoji = "🔴"
-        }
-        $coverageBar = Get-AsciiBar $sonarCoverage
 
-        # Ensure only the first numeric value is used
-        if ($sonarCoverage -is [array]) {
-          $sonarCoverage = $sonarCoverage[0]
-        }
-        # Try to cast to a number safely
-        $sonarCoverage = [double]($sonarCoverage -replace '[^0-9\.]', '')
-        if ($sonarCoverage -ge 77) {
-          $coverageEmoji = "🟢"
-        } elseif ($sonarCoverage -ge 49) {
-          $coverageEmoji = "🟡"
-        } else {
-          $coverageEmoji = "🔴"
-        }
-        $coverageBar = Get-AsciiBar $sonarCoverage
-        
         ############################################################
         # === Generate Severity URLs (global and per module) ===
         ############################################################
@@ -199,18 +211,6 @@
         ############################################################
          $sonarOverallCodeDashBoardUrl = "https://sonarcloud.io/summary/overall?id=$projectKey&branch=$branch"
          $sonarOpenIssuesDashboardUrl= "https://sonarcloud.io/project/issues?issueStatuses=OPEN%2CCONFIRMED&id=$projectKey"
-        
-         function MarkEmoji($count) {
-            if ($count -eq 0) { return "✅" }
-            elseif ($count -le 27) { return "🟡" }
-            else { return "🔴" }
-          } # end of function Mark
-        
-        $sonarBlockerEmojiMark = $(MarkEmoji $blocker)
-        $sonarHighEmojiMark = $(MarkEmoji $high)
-        $sonarMediumEmojiMark = $(MarkEmoji $medium)
-        $sonarLowEmojiMark = $(MarkEmoji $low)
-        $sonarInfoEmojiMark = $(MarkEmoji $info)
 
         function FormatSonarStatus($count, $maxAllowed, $severity) {
             if ($count -eq 0) {
@@ -218,97 +218,35 @@
                 $note  = "(GREAT)"
             } elseif ($count -le $maxAllowed) {
                 $emoji = "🟡"
-                $note  = "(WATCH-OUT)"
+                $note  = "(NEARING THRESHOLD)"
             } else {
                 $emoji = "🔴"
                 $note  = "(OVERBOARD)"
             }
             return " / $maxAllowed $emoji $note"
             #return "$severity Issues: $count / $maxAllowed $emoji $note"
-}
+        }
+
 
         $sonarBlockerStatus = FormatSonarStatus $blocker $env:BLOCKER_MAX "🟥 BLOCKER"
         $sonarHighStatus    = FormatSonarStatus $high    $env:HIGH_MAX    "🟧 HIGH"
         $sonarMediumStatus  = FormatSonarStatus $medium  $env:MEDIUM_MAX  "🟨 MEDIUM"
         $sonarLowStatus     = FormatSonarStatus $low     $env:LOW_MAX     "🟦 LOW"
         $sonarInfoStatus    = FormatSonarStatus $info    $env:INFO_MAX    "ℹ️ INFO"
+        $sonarIssuesLegend = "Legend: ✅ = Excellent / No issues, 🟡 = Monitor Closely (NEARING THRESHOLD), 🔴 = Immediate Action Required (THRESHOLD BREACHED)"
 
-         ############################################################
-                # === Write Overall Table ===
-        ############################################################
-        echo "### 📊 Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar)" >> $env:GITHUB_STEP_SUMMARY
-        echo "Repository: $repository " >> $env:GITHUB_STEP_SUMMARY
-        echo "Branch: $branch" >> $env:GITHUB_STEP_SUMMARY
-        echo "Stage ↔ Main state: $env:STAGE_VS_MAIN_STATE" >> $env:GITHUB_STEP_SUMMARY
-        echo "| **Metric**               | **Value** |" >> $env:GITHUB_STEP_SUMMARY
-        echo "|------------------------- |-----------|" >> $env:GITHUB_STEP_SUMMARY
-        echo "| Checkstyle Violations    | $checkstyleViolations |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| PMD Violations           | $pmdViolations |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| Code Coverage (Sonar)    | $sonarCoverage % $coverageEmoji |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| Coverage Visual          | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🗂 SonarCloud            | Execution: <code>$sonarExecutionNote</code><br/>Issues: <code>$sonarIssuesNote</code><br/>Last Analysis: <code>$lastSonarAnalysis</code> |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟥 BLOCKER               | [$blocker]($($severityLinks.BLOCKER)) $sonarBlockerStatus |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟧 HIGH                  | [$high]($($severityLinks.HIGH)) $sonarHighStatus |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟨 MEDIUM                | [$medium]($($severityLinks.MEDIUM)) $sonarMediumStatus |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| 🟦 LOW                   | [$low]($($severityLinks.LOW)) $sonarLowStatus |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| ℹ INFO                  | [$info]($($severityLinks.INFO)) $sonarInfoStatus |" >> $env:GITHUB_STEP_SUMMARY
-        echo "| Legend                  | ✅ = Excellent / No issues, 🟡 = Monitor Closely (1–27 issues), 🔴 = Immediate Action Required (>27 issues) |" >> $env:GITHUB_STEP_SUMMARY
-        echo "🌐 [View SonarCloud Overall Code Dashboard]($sonarOverallCodeDashBoardUrl)" >> $env:GITHUB_STEP_SUMMARY
-        echo "🌐 [View SonarCloud Issues Breakdown Dashboard]($sonarOpenIssuesDashboardUrl)" >> $env:GITHUB_STEP_SUMMARY
-        
-        ############################################################
-        # === Outputs for Email ===
-        ############################################################
-        "checkstyleCount=$checkstyleViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "pmdCount=$pmdViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "totalSonarFetchedIssues=$totalSonarFetchedIssues" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "coverageBar=$coverageBar" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarCoverage=$sonarCoverage %" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarBlocker=$blocker" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarBlockerEmojiMark=$sonarBlockerStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarBlockerURL=$($severityLinks.BLOCKER)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarHigh=$high" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarHighEmojiMark=$sonarHighStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarHighURL=$($severityLinks.HIGH)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append 
-        "sonarMediumEmojiMark=$sonarMediumStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarMediumURL=$($severityLinks.MEDIUM)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarLow=$low" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarLowEmojiMark=$sonarLowStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarLowURL=$($severityLinks.LOW)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarInfo=$info" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarInfoEmojiMark=$sonarInfoStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarInfoURL=$($severityLinks.INFO)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        "sonarOverallCodeDashBoardURL=$sonarOverallCodeDashBoardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-        
-        $emailModuleSevAggTable=""
-        # $skipSonarPattern = "(?i)skip.*sonar|sonar.*skip"
-        # if ($env:SKIP_FLAG -imatch $skipSonarPattern) {
-        if ($skipFlagVal -imatch $skipSonarPattern) {
-          $emailModuleSevAggTable="<code>⚡ Unavailable — Sonar was SKIPPED (manual override)</code>"
-          # echo "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" >> $env:GITHUB_ENV
-          "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-           Write-Host "Skipping rest of this step"
-           exit 0   # Ends this step cleanly
-        }
+
         ###############################################################################
         # === SonarCloud Module Severity Breakdown (Aggregated per MODULE_PATHS) ===
         ###############################################################################
-        
+
         # Normalize line endings, build map
         $modulePathMap = @{}
         $lines = ($env:MODULE_PATHS -replace "`r", "") -split "`n"
-        
+
         foreach ($line in $lines) {
           if ($line.Trim()) {
-          $parts = $line.Trim() -split "=", 2  # limit to 2 parts only 
+          $parts = $line.Trim() -split "=", 2  # limit to 2 parts only
            # Write-Output "Next line: '$line' split into key='$($parts[1])' and value='$($parts[0])'"
             if ($parts.Count -eq 2) {
               # Write-Output "Creating map entry: key='$($parts[1])', value='$($parts[0])'"
@@ -316,7 +254,7 @@
             }
           }
         }
-        
+
         <# Debug: print map
          foreach ($k in $modulePathMap.Keys) {
              Write-Output "Map Key: $k => Value: $($modulePathMap[$k])"
@@ -329,10 +267,10 @@
           # Write-Output "So moduleName is initialized to: $moduleName"
           if (-not $moduleAgg) {
                 Write-Output "❌ moduleAgg is NULL"
-          } 
-        
-          if (-not $moduleAgg.ContainsKey($moduleName)) { 
-        
+          }
+
+          if (-not $moduleAgg.ContainsKey($moduleName)) {
+
             $moduleAgg[$moduleName] = @{
             BLOCKER = 0; HIGH = 0; MEDIUM = 0; LOW = 0; INFO = 0
             }
@@ -350,7 +288,7 @@
                 else {
                   # Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
                 }
-              } 
+              }
            <# Debug: Print out current aggregate state
            Write-Output "----- Current Module Aggregates -----"
            foreach ($moduleName in $moduleAgg.Keys) {
@@ -360,7 +298,7 @@
            } #>
            # Write-Output "--------------------------------------"
           }
-        
+
         # Step 1: Get directory list from SonarCloud
         $dirFacetssUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&resolved=false&facets=directories&ps=1"
         # Write-Output "Fetching directories from: $dirFacetssUrl"
@@ -369,24 +307,24 @@
         $directories = $json.facets | Where-Object { $_.property -eq "directories" } | Select-Object -ExpandProperty values
         # Write-Output "Directories fetched as below:"
         # $directories | ForEach-Object { Write-Output " - $($_.val)" }
-        
+
         # Step 2: Loop through directories and aggregate counts per module
         foreach ($dirObj in $directories) {
-        
+
           $dir = $dirObj.val
           $matchedModule = $null
           # Write-Output "Next Directory during iteration is: $dir"
-        
-          # check if src of any key in modulePathMap matches the starting string of the current directory 
+
+          # check if src of any key in modulePathMap matches the starting string of the current directory
           foreach ($pathKey in $modulePathMap.Keys) {
             if ($dir -like "$pathKey*") {
               # Write-Output "✅ Match: '$dir' starts with '$pathKey'"
               $matchedModule = $modulePathMap[$pathKey]
               # Write-Output "Matched module: $matchedModule"
               break
-            } 
-          } 
-          # double check if any module has matched to account for current directory 
+            }
+          }
+          # double check if any module has matched to account for current directory
           if (-not $matchedModule) {
             Write-Output "⚠ Skipping: '$dir' does not match any configured module"
             Write-Output " ⚠ Current Directory does not fall under any configured module so will skip for now flagging it $dir"
@@ -398,12 +336,8 @@
                 # Write-Output "✅ moduleAgg exists. Will execute severity checks and aggregate"
                 if ($null -ne $moduleAgg[$matchedModule]) {
                 # Write-Output "✅ moduleAgg has a row for: $matchedModule and can be populated with severity numbers"
-        
+
                 # now fetch impact-severity-wise and then aggregate it
-                  # $sevList = "BLOCKER,CRITICAL,MAJOR,MINOR,INFO"
-                  # $sevList = "BLOCKER,HIGH,MEDIUM,LOW,INFO"
-                  # $sevUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&severities=$sevList&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
-                  # $impactSevUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&impactSeverities=$sevList&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
                   $dirIssuesUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
                   Write-Output "✅ Calling Directory issues url for: $dir as : $dirIssuesUrl"
                   $response = Invoke-WebRequest -Uri $dirIssuesUrl -Headers $headers -Method Get | ConvertFrom-Json
@@ -416,16 +350,7 @@
                   LOW     = 0
                   INFO    = 0
                 }
-        
-<#                  foreach ($issue in $response.issues) {
-                  switch ($issue.severity) {
-                      "BLOCKER"  { $counts.BLOCKER++ }
-                      "CRITICAL" { $counts.HIGH++ }
-                      "MAJOR"    { $counts.MEDIUM++ }
-                      "MINOR"    { $counts.LOW++ }
-                      "INFO"     { $counts.INFO++ }
-                    }
-                } #>
+
                 foreach ($issue in $response.issues) {
                     foreach ($impact in $issue.impacts) {
                       switch ($impact.severity) {
@@ -439,32 +364,22 @@
                 }
                 $totalIssuesDir = ($counts.BLOCKER + $counts.HIGH + $counts.MEDIUM + $counts.LOW + $counts.INFO)
                 Write-Output "✅ Total issues for : $dir are : $totalIssuesDir"
-<#                 foreach ($issue in $response.issues) {
-                  switch ($issue.severity) {
-                      "BLOCKER"  { $counts.BLOCKER++ }
-                      "HIGH" { $counts.HIGH++ }
-                      "MEDIUM"    { $counts.MEDIUM++ }
-                      "LOW"    { $counts.LOW++ }
-                      "INFO"     { $counts.INFO++ }
-                    }
-                } #>
-        
                 # Now add to moduleAgg
                   $moduleAgg[$matchedModule]["BLOCKER"] += $counts.BLOCKER
                   $moduleAgg[$matchedModule]["HIGH"]    += $counts.HIGH
                   $moduleAgg[$matchedModule]["MEDIUM"]  += $counts.MEDIUM
                   $moduleAgg[$matchedModule]["LOW"]     += $counts.LOW
                   $moduleAgg[$matchedModule]["INFO"]    += $counts.INFO
-        
-        
+
+
               } else {
                   Write-Output "⚠ Unexpected: \$moduleAgg['$matchedModule'] is null. Skipping severity count."
               }
             } # end of else of check for $moduleAgg being null
           } # end of else of matchedModule not being found
         } # end step 2
-        
-        # Before moving to next step printing it in logs... 
+
+        # Before moving to next step printing it in logs...
         if (-not $moduleAgg) {
           Write-Output "❌ moduleAgg is NULL"
         }  else {
@@ -486,33 +401,20 @@
                           # $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
           } #>
           # Write-Output "--------------------------------------"
-        }          
-        
-          # Step 3: Pretty-print module severity breakdown with conditional icons
-          if ($moduleAgg.Count -gt 0) {
-          echo "### 📦 SonarCloud Module Impact-Severity" >> $env:GITHUB_STEP_SUMMARY
-          echo "| Module | 🟥 BLOCKER | 🟧 HIGH | 🟨 MEDIUM | 🟦 LOW  | ℹ INFO |" >> $env:GITHUB_STEP_SUMMARY
-          echo "|--------|------------|---------|----------|--------|--------|" >> $env:GITHUB_STEP_SUMMARY
-          foreach ($mod in $moduleAgg.Keys) {
-          $b = $moduleAgg[$mod]
-        
-          function Mark($count) {
-            if ($count -eq 0) { return "✅ $count" }
-            elseif ($count -le 5) { return "🟡 $count" }
-            else { return "🔴 $count" }
-          } # end of function Mark
-        
-          echo "| **$mod** | $(Mark $b.BLOCKER) | $(Mark $b.HIGH) | $(Mark $b.MEDIUM) | $(Mark $b.LOW) | $(Mark $b.INFO) |" >> $env:GITHUB_STEP_SUMMARY
-          }
         }
-        
+       function Mark($count) {
+             if ($count -eq 0) { return "✅ $count" }
+             elseif ($count -le 5) { return "🟡 $count" }
+             else { return "🔴 $count" }
+       } # end of function Mark
         # Step 4: Export results as an output variable for email step
         # Example: "udemy_lpa_javamasterclass:0,2,15,5,0;misc_utils:0,1,8,4,0"
-          $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
+        $emailModuleSevAggTable=""
+        $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
             $b = $moduleAgg[$_]
             "${_}:$(Mark $b.BLOCKER),$(Mark $b.HIGH),$(Mark $b.MEDIUM),$(Mark $b.LOW),$(Mark $b.INFO)"
-          }) -join ";"
-        
+        }) -join ";"
+
         $emailModuleSevAggTable = "<table border='1' cellpadding='5' cellspacing='0'>"
         $emailModuleSevAggTable += "<tr><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
         foreach ($entry in $emailModuleSevAggBreakdown -split ";") {
@@ -528,8 +430,161 @@
                 $emailModuleSevAggTable += "</tr>"
             }
         }
-        
-        $emailModuleSevAggTable += "</table>"
+
+      $emailModuleSevAggTable += "</table>"
+      $githubModuleSevAggTable="Uninitialized"
+      if ($moduleAgg.Count -gt 0) {
+          $nl = "`n"   # newline for markdown readability
+          $githubModuleSevAggTable = "### 📦 SonarCloud Module Impact-Severity$nl$nl"
+
+          $githubModuleSevAggTable += "| Module | 🟥 BLOCKER | 🟧 HIGH | 🟨 MEDIUM | 🟦 LOW  | ℹ INFO |$nl"
+          $githubModuleSevAggTable += "|--------|------------|---------|----------|--------|--------|$nl"
+          foreach ($mod in $moduleAgg.Keys | Sort-Object) {
+              $b = $moduleAgg[$mod]
+              $githubModuleSevAggTable += "| **$mod** | $(Mark $b.BLOCKER) | $(Mark $b.HIGH) | $(Mark $b.MEDIUM) | $(Mark $b.LOW) | $(Mark $b.INFO) |$nl"
+          }
+      }
+
+######################################################################################################################################################################################################################
+
+        Write-Host "🧮 Evaluating metrics against strict thresholds..."
+        $passed = $true
+        $NextStepsHtml = ""
+        $sonarHasNextSteps=$false
+
+        # --- Convert coverage safely ---
+        $coverageValue = [double]($sonarCoverage -replace '[^0-9\.]', '')
+
+         # --- Aggregate violations ---
+        if ($totalViolations -gt [int]$env:CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS) {
+            $passed = $false
+            $NextStepsHtml += "<li>Total code violations exceed allowed maximum ($totalCodeViolations > $($env:CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS)).</li>"
+        }
+
+        if ($checkstyleViolations -gt [int]$env:CHECKSTYLE_MAX_VIOLATIONS) {
+            $passed = $false
+            $NextStepsHtml += "<li>Fix Checkstyle violations ($checkstyleCount > $($env:CHECKSTYLE_MAX_VIOLATIONS)).</li>"
+        }
+
+        if ($pmdViolations -gt [int]$env:PMD_MAX_VIOLATIONS) {
+            $passed = $false
+            $NextStepsHtml += "<li>Fix pmdCount violations ($pmdCount > $($env:PMD_MAX_VIOLATIONS)).</li>"
+        }
+        # --- Sonar Severity Checks with detailed reporting ---
+        $SonarNextStepsHtml += "<li>Resolve Issues that exceeded threshold per severity:</li>"
+        $SonarNextStepsHtml += "<ul>"
+        # Blocker
+        if ($blocker -gt [int]$env:BLOCKER_MAX) {
+            $sonarHasNextSteps=$true
+            $SonarNextStepsHtml += "<li>🟥 BLOCKER Issues: $blocker / $($env:BLOCKER_MAX) 🔴 (Exceeded)</li>"
+        }
+
+        # High
+        if ($high -gt [int]$env:HIGH_MAX) {
+            $sonarHasNextSteps=$true
+            $SonarNextStepsHtml += "<li>🟧 HIGH Issues: $high / $($env:HIGH_MAX) 🔴 (Exceeded)</li>"
+        }
+
+        # Medium
+        if ($medium -gt [int]$env:MEDIUM_MAX) {
+            $sonarHasNextSteps=$true
+            $SonarNextStepsHtml += "<li>🟨 MEDIUM Issues: $medium / $($env:MEDIUM_MAX) 🔴 (Exceeded)</li>"
+        }
+
+        # Low
+        if ($low -gt [int]$env:LOW_MAX) {
+            $sonarHasNextSteps=$true
+            $SonarNextStepsHtml += "<li>🟦 LOW Issues: $low / $($env:LOW_MAX) 🔴 (Exceeded)</li>"
+        }
+
+        # Info
+        if ($info -gt [int]$env:INFO_MAX) {
+            $sonarHasNextSteps=$true
+            $SonarNextStepsHtml += "<li>ℹ️ INFO Issues: $info / $($env:INFO_MAX) 🔴 (Exceeded)</li>"
+        }
+
+        $SonarNextStepsHtml += "</ul>"
+        if($sonarHasNextSteps) {$NextStepsHtml += $SonarNextStepsHtml }
+
+        # --- Coverage ---
+        if ($coverageValue -lt [double]$env:JACOCO_MIN_COVERAGE) {
+            $passed = $false
+            $NextStepsHtml += "<li>Increase test coverage (currently $coverageValue%, minimum required $($env:JACOCO_MIN_COVERAGE)%).</li>"
+        }
+
+        # --- Job Status ---
+        $outcome="$env:JOB_STATUS"
+        if ($outcome -ne "success") {
+            $passed = $false
+            $NextStepsHtml += "<li>The Hygiene sweep and upload reports step, did  not succeed (status: $outcome).</li>"
+        }
+        # --- Laud Hygiene if no issues ---
+        if ([string]::IsNullOrWhiteSpace($NextStepsHtml)) {
+            $NextStepsHtml = "<li>Great job! Hygiene is excellent ✅</li>"
+        }
+
+        # --- Final Status ---
+        $HygieneCheckStatus = if ($passed) { "PASSED ✅" } else { "FAILED ❌" }
+        Write-Host "✅ HygieneCheckStatus: $HygieneCheckStatus"
+
+
+######################################################################################################################################################################################################################
+
+        ############################################################
+        # === Outputs for GITHUB SUMMARY and Email ===
+        ############################################################
+        "checkstyleCount=$checkstyleViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "pmdCount=$pmdViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarCoverage=$sonarCoverage %" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "coverageStatus=$coverageStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "coverageBar=$coverageBar" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        # expose for later consumers (email etc.)
+        "sonarExecutionNote=$sonarExecutionNote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarIssuesNote=$sonarIssuesNote" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "lastSonarAnalysis=$lastSonarAnalysis" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "totalSonarFetchedIssues=$totalSonarFetchedIssues" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarIssuesLegend=$sonarIssuesLegend" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarBlocker=$blocker" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarBlockerEmojiMark=$sonarBlockerStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarBlockerURL=$($severityLinks.BLOCKER)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarHigh=$high" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarHighEmojiMark=$sonarHighStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarHighURL=$($severityLinks.HIGH)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarMedium=$medium" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarMediumEmojiMark=$sonarMediumStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarMediumURL=$($severityLinks.MEDIUM)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarLow=$low" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarLowEmojiMark=$sonarLowStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarLowURL=$($severityLinks.LOW)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarInfo=$info" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarInfoEmojiMark=$sonarInfoStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarInfoURL=$($severityLinks.INFO)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+        "sonarOverallCodeDashBoardURL=$sonarOverallCodeDashBoardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
         # Export both plain breakdown and HTML table
+        "moduleAgg=$moduleAgg" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "EMAIL_BREAKDOWN=$emailModuleSevAggBreakdown" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "EMAIL_MODULE_SEV_AGG_TABLE=$emailModuleSevAggTable" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        # Write as multi-line GitHub Action output
+        $githubModuleSevAggTable | Out-File -FilePath module_table.md -Encoding utf8
+
+        Write-Output "GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE<<EOF" >> $env:GITHUB_OUTPUT
+        Get-Content module_table.md >> $env:GITHUB_OUTPUT
+        Write-Output "EOF" >> $env:GITHUB_OUTPUT
+
+        # --- Emit outputs ---
+        "HygieneCheckStatus=$HygieneCheckStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "NextStepsHtml=$NextStepsHtml" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+
+        ############################################################
+

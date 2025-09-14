@@ -9,9 +9,9 @@ on:
     # - cron: '39 18 * * 4' # For Friday 12:09 AM IST (runs on Thursday UTC)
     # - cron: '30 3 * * 5' # For Friday 9:00 AM IST
     # - cron: '45 6 * * 5' # For Friday 12:15 PM IST
- # push:
-   # branches:
-     # - main
+#  push:
+#    branches:
+#      - main
 permissions:
   actions: write
   contents: read
@@ -132,6 +132,7 @@ jobs:
           BRANCH_EXECUTED: ${{ steps.setup.outputs.TGT_BRANCH }}
           ARTIFACT_URL: ${{ steps.hygiene-sweep-and-upload-reports.outputs.ARTIFACT_URL }}
           STAGE_VS_MAIN_STATE: ${{ env.STAGE_VS_MAIN_STATE }}
+          JOB_STATUS: ${{ steps.hygiene-sweep-and-upload-reports.outcome }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SMTP_SERVER_ADDRESS: ${{ vars.SMTP_SERVER_ADDRESS }}
