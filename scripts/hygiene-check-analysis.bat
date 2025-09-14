@@ -1,16 +1,16 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-echo =================================================================================
-echo     🧹 All Hygiene Workflow — Checkstyle then PMD then JaCoCo then SonarCloud
-echo =================================================================================
+REM echo =================================================================================
+REM echo     🧹 All Hygiene Workflow — Checkstyle then PMD then JaCoCo then SonarCloud
+REM echo =================================================================================
 set "executionEnv=%~1"
 if /i "%executionEnv%"=="githubactions" goto :github
 if /i "%executionEnv%"=="local" goto :local
 goto :unsupported
 
 :github
-echo === Running in GitHub Actions ===
+REM echo === Running in GitHub Actions ===
 	:: === Preserve Original Directory ===
 set "originalDir=%CD%"
 
@@ -18,7 +18,7 @@ set "originalDir=%CD%"
 	:: === Navigate to Project Root ===
 	cd /d "%~dp0.."
 	set "REPO_ROOT=%CD%"
-	echo REPO_ROOT is !REPO_ROOT!
+	REM echo REPO_ROOT is !REPO_ROOT!
 
 	:: === Parse Skip Flags ===
 	set "skip_checkstyle=false"
@@ -46,78 +46,86 @@ set "originalDir=%CD%"
 
 	if not exist "%hygieneLogFolder%" mkdir "%hygieneLogFolder%"
 	REM --- Add echo logs here to confirm the values ---
-	echo skip_checkstyle is %skip_checkstyle%
-	echo skip_pmd is %skip_pmd%
-	echo skip_jacoco is %skip_jacoco%
-	echo skip_sonar is %skip_sonar%
+	REM echo skip_checkstyle is %skip_checkstyle%
+	REM echo skip_pmd is %skip_pmd%
+	REM echo skip_jacoco is %skip_jacoco%
+	REM echo skip_sonar is %skip_sonar%
 	if "%skip_sonar%"=="false" (
-		echo SONAR_SCANNER_BIN as received from environment is %SONAR_SCANNER_BIN%
+		REM echo SONAR_SCANNER_BIN as received from environment is %SONAR_SCANNER_BIN%
 	)
 	REM ------------------------------------------------
 
 	:: === Begin Composite Logging ===
 	echo 🔗 Starting full hygiene sweep at %timestamp% >> "%hygieneLogPath%"
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
+	REM echo 🔗 Starting full hygiene sweep at %timestamp% 
+	REM echo ---------------------------------------------------
 
 	:: === Step 1: Checkstyle ===
 	if "%skip_checkstyle%"=="false" (
 		echo 🚀 Step 1: Running Checkstyle... >> "%hygieneLogPath%"
-		echo 🚀 Step 1: Running Checkstyle...
+		REM echo 🚀 Step 1: Running Checkstyle...
 		call scripts\checkstyle.bat githubactions >> "%hygieneLogPath%" 2>&1
 		echo ✅ Checkstyle scan completed. >> "%hygieneLogPath%"
-		echo ✅ Checkstyle scan completed. 
+		REM echo ✅ Checkstyle scan completed. 
 	) else (
 		echo ⏭️ Skipping Checkstyle... >> "%hygieneLogPath%"
+		REM echo ⏭️ Skipping Checkstyle...
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
-	echo ---------------------------------------------------
+	REM echo ---------------------------------------------------
 
 	:: === Step 2: PMD ===
 	if "%skip_pmd%"=="false" (
 		echo 🚀 Step 2: Running PMD... >> "%hygieneLogPath%"
-		echo 🚀 Step 2: Running PMD... 
+		REM echo 🚀 Step 2: Running PMD... 
 		call scripts\pmd.bat githubactions >> "%hygieneLogPath%" 2>&1
 		echo ✅ PMD scan completed. >> "%hygieneLogPath%"
-		echo ✅ PMD scan completed. 
+		REM echo ✅ PMD scan completed. 
 	) else (
 		echo ⏭️ Skipping PMD... >> "%hygieneLogPath%"
+		REM echo ⏭️ Skipping PMD...
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
-	echo --------------------------------------------------- 
+	REM echo --------------------------------------------------- 
 
 	:: === Step 3: JaCoCo ===
 	if "%skip_sonar%"=="false" (
 		if "%skip_jacoco%"=="false" (
 			echo 🚀 Step 3: Running JaCoCo... >> "%hygieneLogPath%"
-			echo 🚀 Step 3: Running JaCoCo... 
+			REM echo 🚀 Step 3: Running JaCoCo... 
 			call scripts\jacoco-coverage-analysis.bat githubactions >> "%hygieneLogPath%" 2>&1
 			echo ✅ JaCoCo analysis completed. >> "%hygieneLogPath%"
-			echo ✅ JaCoCo analysis completed. 
+			REM echo ✅ JaCoCo analysis completed. 
 		) else (
 			echo ⏭️ Skipping JaCoCo... because skip_jacoco was true  >> "%hygieneLogPath%"
-			echo ⏭️ Skipping JaCoCo... because skip_jacoco was true  
+			REM echo ⏭️ Skipping JaCoCo... because skip_jacoco was true  
 		)
 	)	else (
 		echo ⏭️ Skipping JaCoCo... because skip_sonar was true >> "%hygieneLogPath%"
-		echo ⏭️ Skipping JaCoCo... because skip_sonar was true 
+		REM echo ⏭️ Skipping JaCoCo... because skip_sonar was true 
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
-	echo --------------------------------------------------- 
-
+	REM echo --------------------------------------------------- 
+	call scripts\sonar-scan.bat githubactions
 	:: === Step 4: SonarCloud ===
 	if "%skip_sonar%"=="false" (
 		echo 🚀 Step 4: Running SonarCloud scan... >> "%hygieneLogPath%"
+		REM echo 🚀 Step 4: Running SonarCloud scan... 
 		call scripts\sonar-scan.bat githubactions >> "%hygieneLogPath%" 2>&1
 		echo ✅ SonarCloud scan completed. >> "%hygieneLogPath%"
+		REM echo ✅ SonarCloud scan completed.
 	) else (
 		echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true  >> "%hygieneLogPath%"
-		echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true  
+		REM echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true  
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
-	echo --------------------------------------------------- 
+	REM echo --------------------------------------------------- 
 	:: === Wrap-Up ===
 	echo 🎯 All hygiene steps complete. | tee -a "%hygieneLogPath%"
-	echo 📄 Composite log available at: %hygieneLogPath%
+	REM echo 📄 Composite log available at: %hygieneLogPath%
+
+
 
 	:: === Restore Original Directory ===
 
@@ -282,11 +290,6 @@ for /f "usebackq tokens=* delims=" %%i in (`powershell -nologo -noprofile -Execu
 
 :done
 
-REM if defined jacocoSummary (
-    REM echo JaCoCo Coverage: !jacocoSummary!
-REM ) else (
-    REM echo Jacoco report missing
-REM )
 
 REM :: --- JaCoCo Coverage via PowerShell ---
 REM if exist "reports\jacoco\jacoco-latest.xml" (
@@ -298,9 +301,7 @@ REM )
 REM if defined jacocoTemp (
     REM set "jacocoSummary=%jacocoTemp%"
 REM )
-REM echo ?? OutsideDo Code Coverage (JaCoCo): %jacocoSummary%
-REM echo ?? OutsideDo Code Coverage (JaCoCo): !jacocoSummary!
-
+REM echo ?? OutsideDo Code Coverage (JaCoCo): %jacocoSummary% or !jacocoSummary!
 
 echo ?? Final Summary
 echo Checkstyle Violations: !checkstyleCount!
@@ -328,5 +329,5 @@ echo Unsupported environment: %executionEnv%
 exit /b 1
 
 :end
-echo 🎯 All hygiene steps complete.
+REM echo 🎯 All hygiene steps complete.
 exit /b 0

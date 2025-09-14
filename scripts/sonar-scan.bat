@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-echo ===================================================
-echo ☕ SonarCloud Scan Initiator — Dynamic Branch (Preflight and Preview)
-echo ===================================================
+REM echo ===================================================
+REM echo ☕ SonarCloud Scan Initiator — Dynamic Branch (Preflight and Preview)
+REM echo ===================================================
 
 set "executionEnv=%~1"
 if /i "%executionEnv%"=="githubactions" goto :github
@@ -11,7 +11,7 @@ if /i "%executionEnv%"=="local" goto :local
 goto :unsupported
 
 :github
-echo === Running in GitHub Actions ===
+REM echo === Running in GitHub Actions ===
 :: Capture Start Time
 for /f %%t in ('powershell -command "Get-Date -Format 'HH:mm:ss'"') do set startTime=%%t
 REM timeout /t 3 >nul
@@ -20,7 +20,7 @@ set "originalDir=%CD%"
 :: === Set working directory ===
 cd /d "%~dp0.."
 set "REPO_ROOT=%CD%"
-echo REPO_ROOT %REPO_ROOT%
+REM echo REPO_ROOT %REPO_ROOT%
 :: Timestamp Setup
 for /f %%i in ('powershell -Command "Get-Date -Format yyyy-MM-dd--HH-mm"') do set timestamp=%%i
 
@@ -31,7 +31,7 @@ for /f "tokens=2 delims==" %%B in ('findstr /i "sonar.branch.name" sonar-project
     set "BRANCH_NAME=!BRANCH_NAME: =!"
 )
 
-echo 🧪 Branch Name:     !BRANCH_NAME!
+REM echo 🧪 Branch Name:     !BRANCH_NAME!
 
 :: Config Toggles
 set ENABLE_JACOCO=true
@@ -68,7 +68,7 @@ REM set SONAR_TOKEN=not-sharing it here...
 if not exist "%logFolder%" mkdir "%logFolder%"
 
 :: Preflight Report Checks
-echo 🔍 Validating report paths...
+REM echo 🔍 Validating report paths...
 set failed=false
 
 if not exist "!checkstyleReportPath!" (
@@ -114,51 +114,39 @@ if "!failed!"=="true" (
 )
 
 :: Preview Reports
-echo ------------------------------------------
-echo 📄 Checkstyle:   !checkstyleReportPath!
-echo 📄 PMD:          !pmdReportPath!
-echo 📄 JUnit Paths:
+REM echo ------------------------------------------
+REM echo 📄 Checkstyle:   !checkstyleReportPath!
+REM echo 📄 PMD:          !pmdReportPath!
+REM echo 📄 JUnit Paths:
 for %%p in (%junitPaths:,= %) do (
-    echo   ↳ %%p
+    REM echo   ↳ %%p
     if exist "%%p" dir /b "%%p"
 )
 if /I "%ENABLE_JACOCO%"=="true" (
-    echo 📄 JaCoCo Execs:
+    REM echo 📄 JaCoCo Execs:
     for %%p in (%jacocoPaths:,= %) do (
-        echo   ↳ %%p
+        REM echo   ↳ %%p
         if exist "%%p" dir /b "%%p"
     )
 )
-echo ------------------------------------------
+REM echo ------------------------------------------
 echo After checking report paths >> "!logPath!"
-:: Dry Run Check
-if /I "%DRY_RUN%"=="true" (
-    echo 🚧 Dry-run mode enabled — skipping SonarCloud push
-    cd /d "%originalDir%"
-    pause
-    exit /b 0
-)
+REM :: Dry Run Check
+REM if /I "%DRY_RUN%"=="true" (
+    REM echo 🚧 Dry-run mode enabled — skipping SonarCloud push
+    REM cd /d "%originalDir%"
+    REM pause
+    REM exit /b 0
+REM )
 for /f "tokens=1,2 delims==" %%a in (.env) do (
   if "%%a"=="SONAR_TOKEN" set SONAR_TOKEN=%%b
 )
-REM :: Launch Scanner
-REM echo 🚀 Running SonarCloud scan — Branch: !BRANCH_NAME!
-REM REM set "SCANNER=%REPO_ROOT%\tools\sonar-scanner\sonar-scanner-7.1.0.4889-windows-x64\bin\sonar-scanner.bat"
-REM set "SCANNER=%REPO_ROOT%\tools\sonar-scanner\sonar-scanner-7.2.0.5079-windows-x64\bin\sonar-scanner.bat"
-REM if exist "%SCANNER%" (
-  REM REM call "%SCANNER%" -X "-Dsonar.token=%SONAR_TOKEN%"
-  REM call "%SCANNER%" "-Dsonar.token=%SONAR_TOKEN%"
-REM ) else (
-  REM echo ❌ sonar-scanner.bat not found at %SCANNER%
-  REM exit /b 1
-REM )
-:: Launch Scanner
-echo 🚀 Running SonarCloud scan — Branch: !BRANCH_NAME!
-:: Call sonar-scanner.bat using the environment variable
+
 set "SCANNER=%SONAR_SCANNER_BIN%\sonar-scanner.bat"
 if exist "%SCANNER%" (
-  call "%SCANNER%" "-Dsonar.token=%SONAR_TOKEN%"
-  echo ✅ SonarCloud scan completed successfully.
+  call "%SCANNER%" "-Dsonar.token=%SONAR_TOKEN%" > "!logPath!" 2>&1
+  echo ✅ SonarCloud scan completed successfully. >> "!logPath!"
+  REM echo ✅ SonarCloud scan completed successfully.
 ) else (
   echo ❌ sonar-scanner.bat not found at %SCANNER%
   echo SONAR_SCANNER_BIN is %SONAR_SCANNER_BIN%
@@ -174,28 +162,18 @@ REM ) else (
 REM )
 
 
-:: Count Violations
-set /a CHECKSTYLE_COUNT=0
-set /a PMD_COUNT=0
+REM :: Count Violations
+REM set /a CHECKSTYLE_COUNT=0
+REM set /a PMD_COUNT=0
 
-for /f %%X in ('findstr /c:"<error " "!checkstyleReportPath!"') do (
-    set /a CHECKSTYLE_COUNT+=1
-)
-for /f %%X in ('findstr /c:"<violation " "!pmdReportPath!"') do (
-    set /a PMD_COUNT+=1
-)
+REM for /f %%X in ('findstr /c:"<error " "!checkstyleReportPath!"') do (
+    REM set /a CHECKSTYLE_COUNT+=1
+REM )
+REM for /f %%X in ('findstr /c:"<violation " "!pmdReportPath!"') do (
+    REM set /a PMD_COUNT+=1
+REM )
 
-:: Warning Thresholds
-set warn=false
-if !durationMinutes! GEQ 5 (
-    set warn=true
-)
-if !CHECKSTYLE_COUNT! GEQ 1000 (
-    set warn=true
-)
-if !PMD_COUNT! GEQ 100 (
-    set warn=true
-)
+
 :: Capture End Time
 for /f %%t in ('powershell -command "Get-Date -Format 'HH:mm:ss'"') do set endTime=%%t
 
@@ -204,35 +182,32 @@ for /f %%d in ('powershell -command "[math]::Round((New-TimeSpan -Start '!startT
 
 
 
-:: Final Banner
-echo ===================================================
-echo 🌀 Scan Summary — Branch: !BRANCH_NAME!
-echo 🔍 Log Path: !logPath! -- %timestamp%
-echo 🕒 Start:    %startTime%
-echo 🕒 End:      %endTime%
-echo ⏱️ Duration: %durationMinutes% minutes
-echo ✅ Checkstyle Violations: !CHECKSTYLE_COUNT!
-echo ✅ PMD Violations:        !PMD_COUNT!
-if "!warn!"=="true" (
-    echo ⚠️  Warning: High violation count or long scan duration
-)
-echo ===================================================
+REM :: Final Banner
+REM echo ===================================================
+REM echo 🌀 Scan Summary — Branch: !BRANCH_NAME!
+REM echo 🔍 Log Path: !logPath! -- %timestamp%
+REM echo 🕒 Start:    %startTime%
+REM echo 🕒 End:      %endTime%
+REM echo ⏱️ Duration: %durationMinutes% minutes
+REM echo ✅ Checkstyle Violations: !CHECKSTYLE_COUNT!
+REM echo ✅ PMD Violations:        !PMD_COUNT!
+REM echo ===================================================
 
 :: Mirror to Log File
-(
-    echo ================== SCAN SUMMARY ==================
-    echo 🌀 Branch: !BRANCH_NAME!
-    echo 🔍 Log Path :   !logPath! -- %timestamp%
-    echo 🕒 Start:    !startTime!
-    echo 🕒 End:      !endTime!
-    echo ⏱️ Duration: !durationMinutes! minutes
-    echo ✅ Checkstyle: !CHECKSTYLE_COUNT!
-    echo ✅ PMD:        !PMD_COUNT!
-    if "!warn!"=="true" (
-        echo ⚠️  Warning: High violation count or long scan duration
-    )
-    echo ===================================================
-) >> "!logPath!"
+REM (
+    REM echo ================== SCAN SUMMARY ==================
+    REM echo 🌀 Branch: !BRANCH_NAME!
+    REM echo 🔍 Log Path :   !logPath! -- %timestamp%
+    REM echo 🕒 Start:    !startTime!
+    REM echo 🕒 End:      !endTime!
+    REM echo ⏱️ Duration: !durationMinutes! minutes
+    REM echo ✅ Checkstyle: !CHECKSTYLE_COUNT!
+    REM echo ✅ PMD:        !PMD_COUNT!
+    REM if "!warn!"=="true" (
+        REM echo ⚠️  Warning: High violation count or long scan duration
+    REM )
+    REM echo ===================================================
+REM ) >> "!logPath!"
 goto :end
 
 :local
@@ -345,17 +320,17 @@ echo 📄 Checkstyle:   !checkstyleReportPath!
 echo 📄 PMD:          !pmdReportPath!
 echo 📄 JUnit Paths:
 for %%p in (%junitPaths:,= %) do (
-    echo   ↳ %%p
+    REM echo   ↳ %%p
     if exist "%%p" dir /b "%%p"
 )
 if /I "%ENABLE_JACOCO%"=="true" (
-    echo 📄 JaCoCo Execs:
+    REM echo 📄 JaCoCo Execs:
     for %%p in (%jacocoPaths:,= %) do (
-        echo   ↳ %%p
+        REM echo   ↳ %%p
         if exist "%%p" dir /b "%%p"
     )
 )
-echo ------------------------------------------
+REM echo ------------------------------------------
 
 :: Dry Run Check
 if /I "%DRY_RUN%"=="true" (
@@ -454,7 +429,7 @@ echo Unsupported environment: %executionEnv%
 exit /b 1
 
 :end
-echo SonarCloud Sonar-Scan Analysis complete.
+REM echo SonarCloud Sonar-Scan Analysis complete.
 cd /d "%originalDir%"
 endlocal
 exit /b 0

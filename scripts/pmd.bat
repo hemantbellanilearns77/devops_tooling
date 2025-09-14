@@ -58,25 +58,45 @@ echo TEXT REPORT: %TEXT_REPORT%
 echo XML REPORT:  %XML_REPORT%
 echo ===========================================
 
-:: === PMD TEXT REPORT ===
+REM :: === PMD TEXT REPORT ===
+REM echo Running PMD Text Analysis...
+REM java -cp "%CLASSPATH%" net.sourceforge.pmd.cli.PmdCli check ^
+  REM --no-progress ^
+  REM --rulesets "%RULESET%" ^
+  REM --dir "%SRC_DIRS%" ^
+  REM --format text ^
+  REM --report-file "%TEXT_REPORT%" ^
+  REM > "%LOG_FILE%" 2>&1
+
+REM :: === PMD XML REPORT ===
+REM echo Running PMD XML Analysis...
+REM java -cp "%CLASSPATH%" net.sourceforge.pmd.cli.PmdCli check ^
+  REM --no-progress ^
+  REM --rulesets "%RULESET%" ^
+  REM --dir "%SRC_DIRS%" ^
+  REM --format xml ^
+  REM --report-file "%XML_REPORT%" ^
+  REM >> "%LOG_FILE%" 2>&1
+  
+:: === RUN PMD ANALYSIS (TEXT) ===
 echo Running PMD Text Analysis...
-java -cp "%CLASSPATH%" net.sourceforge.pmd.cli.PmdCli check ^
+call "%PMD_HOME%\bin\pmd.bat" check ^
   --no-progress ^
   --rulesets "%RULESET%" ^
   --dir "%SRC_DIRS%" ^
   --format text ^
   --report-file "%TEXT_REPORT%" ^
-  > "%LOG_FILE%" 2>&1
 
-:: === PMD XML REPORT ===
+:: === RUN PMD ANALYSIS (XML) ===
 echo Running PMD XML Analysis...
-java -cp "%CLASSPATH%" net.sourceforge.pmd.cli.PmdCli check ^
+call "%PMD_HOME%\bin\pmd.bat" check ^
   --no-progress ^
   --rulesets "%RULESET%" ^
   --dir "%SRC_DIRS%" ^
   --format xml ^
   --report-file "%XML_REPORT%" ^
   >> "%LOG_FILE%" 2>&1
+
 
 :: === CHECK OUTPUT ===
 echo.
@@ -93,17 +113,17 @@ if exist "%XML_REPORT%" (
 )
 
 :: === SUMMARY ===
-if exist "%XML_REPORT%" (
-    echo.
-    echo ===== VIOLATION SUMMARY =====
-    set /a violationCount=0
-    for /f "usebackq delims=" %%L in ("%TEXT_REPORT%") do (
-        set /a violationCount+=1
-    )
-    echo Total Violations: !violationCount!
-    echo =============================
-)
-echo.
+REM if exist "%XML_REPORT%" (
+    REM echo.
+    REM echo ===== VIOLATION SUMMARY =====
+    REM set /a violationCount=0
+    REM for /f "usebackq delims=" %%L in ("%XML_REPORT%") do (
+        REM set /a violationCount+=1
+    REM )
+    REM echo Total Violations: !violationCount!
+    REM echo =============================
+REM )
+REM echo.
 echo ======= Log file is at: %LOG_FILE% =======
 echo.
 goto :end

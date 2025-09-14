@@ -23,16 +23,38 @@ cd /d "%~dp0.."
 :: ==========================================================
 :: CONFIGURATION SETUP
 :: ==========================================================
-:: Default rootPath = first argument, else current directory
-set "rootPath=%~1"
-if "%rootPath%"=="" set "rootPath=%CD%"
 
-:: Default runMode = DRYRUN
-:: (so you can test safely unless EXECUTE is explicitly passed)
-set "runMode=DRYRUN" 
-set "runMode=%~2"
+:: --- Case 1: Only runMode passed (EXECUTE or DRYRUN) ---
+if /i "%~1"=="EXECUTE" (
+    set "runMode=EXECUTE"
+    set "rootPath=%CD%"
+    goto :initDone
+)
+if /i "%~1"=="DRYRUN" (
+    set "runMode=DRYRUN"
+    set "rootPath=%CD%"
+    goto :initDone
+)
+
+:: --- Case 2: rootPath + runMode ---
+if not "%~1"=="" (
+    set "rootPath=%~1"
+)
+if not "%~2"=="" (
+    set "runMode=%~2"
+)
+
+:: Defaults if missing
+if "%rootPath%"=="" set "rootPath=%CD%"
 if "%runMode%"=="" set "runMode=DRYRUN"
 
+:: --- Validate runMode ---
+if /i "%runMode%"=="EXECUTE" goto :initDone
+if /i "%runMode%"=="DRYRUN" goto :initDone
+
+echo [ERROR] Invalid runMode: %runMode%
+echo Allowed values: DRYRUN (default) or EXECUTE
+exit /b 1
 
 :: ==========================================================
 :: SPECIAL CASE: Only runMode passed (no rootPath)
@@ -80,6 +102,14 @@ if /i "%runMode%"=="DRYRUN" goto :valid
 echo [ERROR] Invalid runMode: %runMode%
 echo Allowed values: DRYRUN (default) or EXECUTE
 exit /b 1
+
+:: ==========================================================
+:: CONFIGURATION SETUP
+:: ==========================================================
+set "rootPath="
+set "runMode="
+
+
 
 :valid
 
@@ -197,6 +227,7 @@ echo [DEBUG] Now traversing targetfolder "!targetFolder!" >> "%logFile%"
 							set /a old+=1
 							if "!runMode!"=="EXECUTE" (
 								echo [DEBUG] [EXECUTE] DELETE FILE: !literalPath! !age! hrs
+								echo SendToRecycleBin 1
 								call powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem^]::DeleteFile('!literalPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
 								echo [EXECUTE] DELETED FILE: !literalPath! !age! hrs >> "%logFile%"
 								call :colorEcho "[DEBUG][EXECUTE][DELETE] DELETED FILE: !literalPath! hrs !age!" RED
@@ -249,7 +280,8 @@ echo [DEBUG] Now traversing targetfolder "!targetFolder!" >> "%logFile%"
 							set /a old+=1
 							if "!runMode!"=="EXECUTE" (
 								echo [DEBUG] [EXECUTE] DELETE FILE: !literalPath! !age! hrs
-								call powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem^]::DeleteFile('!literalPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
+								echo SendToRecycleBin 2
+								powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem^]::DeleteFile('!literalPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
 								echo [EXECUTE] DELETED FILE: !literalPath! !age! hrs >> "%logFile%"
 								call :colorEcho "[DEBUG] [EXECUTE] DELETED FILE:: !literalPath! !age! hrs" RED
 							) else (
@@ -298,7 +330,8 @@ echo [DEBUG] Now traversing targetfolder "!targetFolder!" >> "%logFile%"
 							echo [DEBUG] !old!
 							if "!runMode!"=="EXECUTE" (
 								echo [DEBUG] [EXECUTE] DELETE DIR: !dirPath! !dirAgeH! hrs
-								powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('!dirPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
+								echo SendToRecycleBin 3
+								call powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory('!dirPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
 								REM : Try below to attempt sending them to bin first
 								REM powershell -NoProfile -Command "$Shell = New-Object -ComObject Shell.Application; 
 								REM ^$Shell.NameSpace(0).ParseName('!literalPath!').InvokeVerb('delete')"
@@ -368,6 +401,7 @@ echo [DEBUG] Now traversing targetfolder "!targetFolder!" >> "%logFile%"
 						set /a old+=1 
 						 if "!runMode!"=="EXECUTE" (
 							echo [DEBUG] [EXECUTE] DELETING to Recycle Bin: !literalPath! !age! hours
+							echo SendToRecycleBin 4
 							call powershell -NoProfile -Command "Add-Type -AssemblyName Microsoft.VisualBasic; ^[Microsoft.VisualBasic.FileIO.FileSystem^]::DeleteFile('!literalPath!', 'OnlyErrorDialogs', 'SendToRecycleBin')"
 							echo [DEBUG] [EXECUTE] DELETED: !literalPath! !age! hours >> "%logFile%"
 							call :colorEcho "[DEBUG] [EXECUTE] DELETED: !literalPath! !age! hours" RED

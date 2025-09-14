@@ -1,8 +1,8 @@
-# .github/actions/publish-email-summary/action.yml
+# .github/actions/publish-github-summary/action.yaml
 ##############################################################
-# EMAIL SUMMARY COMPOSITE
+# GITHUB  SUMMARY COMPOSITE
 ##############################################################
-name: "Send Hygiene Summary Email"
+name: "Publish GitHub Summary Composite"
 description: "Reusable step to send hygiene summary email"
 inputs:
   HygieneCheckStatus:
@@ -125,10 +125,86 @@ inputs:
   sonarIssuesLegend:
     required: true
     description: ""
+  GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE:
+    required: true
+    description: ""
 
 runs:
   using: "composite"
   steps:
+    ####################################################
+    # Publish GITHUB SUMMARY
+    #      $branch                = "${{ inputs.BRANCH_EXECUTED }}"
+    #      $repository            = "${{ github.repository }}"
+    #      $checkstyleViolations  = "${{ inputs.checkstyleCount }}"
+    #      $pmdViolations         = "${{ inputs.pmdCount }}"
+    #      $sonarCoverage         = "${{ inputs.sonarCoverage }}"
+    #      $coverageStatus        = "${{ inputs.coverageStatus }}"
+    #      $coverageBar           = "${{ inputs.coverageBar }}"
+    #      $sonarExecutionNote    = "${{ inputs.sonarExecutionNote }}"
+    #      $sonarIssuesNote       = "${{ inputs.sonarIssuesNote }}"
+    #      $lastSonarAnalysis     = "${{ inputs.lastSonarAnalysis }}"
+    #      $sonarBlocker          = "${{ inputs.sonarBlocker }}"
+    #      $sonarBlockerUrl       = "${{ inputs.sonarBlockerUrl }}"
+    #      $sonarBlockerEmojiMark = "${{ inputs.sonarBlockerEmojiMark }}"
+    #      $sonarHigh             = "${{ inputs.sonarHigh }}"
+    #      $sonarHighUrl          = "${{ inputs.sonarHighUrl }}"
+    #      $sonarHighEmojiMark    = "${{ inputs.sonarHighEmojiMark }}"
+    #      $sonarMedium           = "${{ inputs.sonarMedium }}"
+    #      $sonarMediumUrl        = "${{ inputs.sonarMediumUrl }}"
+    #      $sonarMediumEmojiMark  = "${{ inputs.sonarMediumEmojiMark }}"
+    #      $sonarLow              = "${{ inputs.sonarLow }}"
+    #      $sonarLowUrl           = "${{ inputs.sonarLowUrl }}"
+    #      $sonarLowEmojiMark     = "${{ inputs.sonarLowEmojiMark }}"
+    #      $sonarInfo             = "${{ inputs.sonarInfo }}"
+    #      $sonarInfoUrl          = "${{ inputs.sonarInfoUrl }}"
+    #      $sonarInfoEmojiMark    = "${{ inputs.sonarInfoEmojiMark }}"
+    #      $sonarOverallUrl       = "${{ inputs.sonarOverallCodeDashBoardURL }}"
+    #      $sonarOpenIssuesUrl    = "${{ inputs.sonarOpenIssuesDashboardURL }}"
+    #      $moduleTableHtml       = "${{ inputs.GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE }}"
+    #      $sonarLegend           = "${{ inputs.sonarIssuesLegend }}"
+    #      $stageState            = "${{ inputs.STAGE_VS_MAIN_STATE }}"
+    ####################################################
+    - name: Publish GITHUB Summary
+      id: publish-github-summary
+      shell: pwsh
+      run: |
+        $branch = "${{ inputs.BRANCH_EXECUTED }}"
+        $repository = "${{ github.repository }}"
+        $checkstyleViolations = "${{ inputs.checkstyleCount }}"
+        $pmdViolations = "${{ inputs.pmdCount }}"
+        $sonarCoverage = "${{ inputs.sonarCoverage }}"
+        $coverageStatus = "${{ inputs.coverageStatus }}"
+        $coverageBar="${{ inputs.coverageBar }}"
+        
+         ############################################################
+                   # === Write Overall Table ===
+         ############################################################
+         echo "### 📊 Hygiene Summary (Checkstyle + PMD + JaCoCo + Sonar)" >> $env:GITHUB_STEP_SUMMARY
+         echo "Repository: $repository " >> $env:GITHUB_STEP_SUMMARY
+         echo "Branch: $branch" >> $env:GITHUB_STEP_SUMMARY
+         echo "Stage ↔ Main state: ${{inputs.STAGE_VS_MAIN_STATE }}" >> $env:GITHUB_STEP_SUMMARY
+         echo "| **Metric**               | **Value** |" >> $env:GITHUB_STEP_SUMMARY
+         echo "|------------------------- |-----------|" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 📈 Code Coverage (Sonar)    | $sonarCoverage $coverageStatus |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🎯 Coverage Visual          | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 📝 Checkstyle Violations    | $checkstyleViolations |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🔍 PMD Violations           | $pmdViolations |" >> $env:GITHUB_STEP_SUMMARY00
+         echo "| 🗂 SonarCloud                | Execution: <code>${{inputs.sonarExecutionNote}}</code><br/>Issues: <code>${{inputs.sonarIssuesNote}}</code><br/>Last Analysis: <code>${{inputs.lastSonarAnalysis }}</code> |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟥 BLOCKER                   | [${{ inputs.sonarBlocker }}](${{ inputs.sonarBlockerUrl }}) ${{ inputs.sonarBlockerEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟧 HIGH                      | [${{ inputs.sonarHigh }}](${{ inputs.sonarHighUrl }}) ${{ inputs.sonarHighEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟨 MEDIUM                    | [[${{ inputs.sonarMedium }}](${{ inputs.sonarMediumUrl }}) ${{ inputs.sonarMediumEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟦 LOW                       | [[${{ inputs.sonarLow }}](${{ inputs.sonarLowUrl }}) ${{ inputs.sonarLowEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| ℹ INFO                       | [[${{ inputs.sonarInfo }}](${{ inputs.sonarInfoUrl }}) ${{ inputs.sonarInfoEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| Legend                       | ${{ inputs.sonarIssuesLegend }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "🌐 [View SonarCloud Overall Code Dashboard](${{ inputs.sonarOverallCodeDashBoardUrl }})" >> $env:GITHUB_STEP_SUMMARY
+         echo "🌐 [View SonarCloud Issues Breakdown Dashboard](${{ inputs.sonarOpenIssuesDashboardUrl }})" >> $env:GITHUB_STEP_SUMMARY
+         echo "${{ inputs.GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE }}" >> $env:GITHUB_STEP_SUMMARY
+    
+
+    ##########################
+    # Email Success Summary
+    ##########################
     - name: 📧 Send Hygiene Summary Email
       uses: dawidd6/action-send-mail@v3
       with:
@@ -160,18 +236,18 @@ runs:
                             <code style="font-family:Calibri, sans-serif; font-size:12pt;">${{ inputs.HygieneCheckStatus }}</code>
                           </span>
                         </h2>
-                      
+
                         <p style="margin:0 0 12px 0;">
                           <strong>Repository:</strong> <code>${{ github.repository }}</code><br/>
                           <strong>Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
                           <strong>Stage ↔ Main state:</strong> <code>${{ inputs.STAGE_VS_MAIN_STATE }}</code><br/>
                           <strong>Duration:</strong> <code>${{ inputs.formattedDuration }}</code>
                         </p>
-                      
+
                         <p style="margin:12px 0; font-style:italic; color:#5d6d7e;">
                            ${{ inputs.sonarIssuesLegend }}
                         </p>
-                      
+
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📊 Summary</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           <li style="margin-bottom:6px;"><b>📈 Code Coverage:</b> 
@@ -197,12 +273,12 @@ runs:
                             </ul>
                           </li>
                         </ul>
-                      
+
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📦 Module-Wise Impact-Severity</h3>
                         <div style="margin:8px 0 16px 0;">
                           ${{ inputs.EMAIL_MODULE_SEV_AGG_TABLE }}
                         </div>
-                      
+
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">🔗 Key Links</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           <li style="margin-bottom:6px;"><a href="${{ inputs.sonarOverallCodeDashBoardURL }}" style="color:#1a5276; text-decoration:none;">SonarCloud – ${{ inputs.BRANCH_EXECUTED }} Branch Summary</a></li>
@@ -210,12 +286,12 @@ runs:
                           <li style="margin-bottom:6px;"><a href="https://github.com/${{ github.repository }}/commit/${{ inputs.FULL_SHA }}" style="color:#1a5276; text-decoration:none;">View Last Commit (SHA=${{ inputs.SHORT_SHA }})</a></li>
                           <li style="margin-bottom:6px;"><a href="${{ inputs.ARTIFACT_URL }}" style="color:#1a5276; text-decoration:none;">Download Hygiene Reports (Run: ${{ github.run_id }})</a></li>
                         </ul>
-                      
+
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📌 Next Steps</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           ${{ inputs.NextStepsHtml }}
                         </ul>
-                      
+
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📜 Job Execution Details</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           <li style="margin-bottom:6px;">Triggered by: <code>${{ inputs.TRIGGER_INFO }}</code></li>
@@ -225,12 +301,12 @@ runs:
                           <li style="margin-bottom:6px;">Job Duration: <code>${{ inputs.formattedDuration }}</code></li>
                           <li style="margin-bottom:6px;">Start: <code>${{ inputs.startTime }}</code> | End: <code>${{ inputs.endTime }}</code></li>
                         </ul>
-                      
+
                         <p style="margin-top:20px; color:#5d6d7e; font-style:italic;">
                           🕒 All times reported in IST.<br/>
                           🤖 This is an automated notification from GitHub Actions. For any queries, please check the linked dashboards.
                         </p>
-                      
+
                       </td>
                     </tr>
                   </table>
