@@ -1,4 +1,3 @@
-# .github/actions/publish-github-summary/action.yaml
 ##############################################################
 # GITHUB  SUMMARY COMPOSITE
 ##############################################################
@@ -236,7 +235,6 @@ runs:
                             <code style="font-family:Calibri, sans-serif; font-size:12pt;">${{ inputs.HygieneCheckStatus }}</code>
                           </span>
                         </h2>
-
                         <p style="margin:0 0 12px 0;">
                           <strong>Repository:</strong> <code>${{ github.repository }}</code><br/>
                           <strong>Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
@@ -291,9 +289,17 @@ runs:
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           ${{ inputs.NextStepsHtml }}
                         </ul>
-
-                        <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📜 Job Execution Details</h3>
+                        <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📜 Job Execution Details
+                        
+                        </h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
+                          <li style="margin-bottom:6px;">Job Execution Status: 
+                            <span style="color:${{ job.status == 'success' && 'green' || 'red' }};">
+                            <code style="font-family:Calibri, sans-serif; font-size:12pt; font-weight:bold;">
+                              ${{ job.status }}
+                             </code>
+                             </span>
+                          </li>
                           <li style="margin-bottom:6px;">Triggered by: <code>${{ inputs.TRIGGER_INFO }}</code></li>
                           <li style="margin-bottom:6px;">Last Commit / PR Approved and Merged, By: <code>${{ inputs.COMMIT_AUTHOR }}</code></li>
                           <li style="margin-bottom:6px;">Last Commit / PR Merge Approval, Message: <code>${{ inputs.COMMIT_MSG }}</code></li>
@@ -301,12 +307,10 @@ runs:
                           <li style="margin-bottom:6px;">Job Duration: <code>${{ inputs.formattedDuration }}</code></li>
                           <li style="margin-bottom:6px;">Start: <code>${{ inputs.startTime }}</code> | End: <code>${{ inputs.endTime }}</code></li>
                         </ul>
-
                         <p style="margin-top:20px; color:#5d6d7e; font-style:italic;">
                           🕒 All times reported in IST.<br/>
                           🤖 This is an automated notification from GitHub Actions. For any queries, please check the linked dashboards.
                         </p>
-
                       </td>
                     </tr>
                   </table>

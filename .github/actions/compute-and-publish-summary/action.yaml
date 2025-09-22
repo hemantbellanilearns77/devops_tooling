@@ -53,10 +53,10 @@ runs:
   using: "composite"
   steps:
     ##############################################################################
-    # 1. COMPUTE SUMMARY COUNTS AND PUBLISH GITHUBSUMMARY SECTION
+          # COMPUTE METRICS, COMPARE THEM TO THRESHOLD AND GENERATE STATUS
     ##############################################################################
 
-    - name: 🧮 Compute Counts and Export Counts and Status and Threshold Outputs
+    - name: 🧮 Compute Metrics, Evaluate against Thresholds and Export Metrics, Status as Outputs
       id: metrics-and-thresholds
       shell: pwsh
       env:
@@ -67,7 +67,6 @@ runs:
         SONAR_ORG: ${{ env.SONAR_ORG }}
         BRANCH_EXECUTED: ${{ inputs.BRANCH_EXECUTED }}
         REPOSITORY: ${{ github.repository }}
-        STAGE_VS_MAIN_STATE: ${{ inputs.STAGE_VS_MAIN_STATE }}
       run: |
         pwsh -File .\.github\scripts\compute-metrics-thresholds-status.ps1
 

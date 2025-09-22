@@ -163,6 +163,12 @@
          Write-Error "⚠ API call failed: $_"
          exit 1
         }
+#         Write-Host "✅ Counts as extracted from API Call response after fetching total impact severities are as below:"
+#         Write-Host "✅ BLOCKER: "$impactSeveritiesCounts["BLOCKER"]""
+#         Write-Host "✅ HIGH: "$impactSeveritiesCounts["HIGH"]""
+#         Write-Host "✅ MEDIUM: "$impactSeveritiesCounts["MEDIUM"]""
+#         Write-Host "✅ LOW: "$impactSeveritiesCounts["LOW"]""
+#         Write-Host "✅ INFO: "$impactSeveritiesCounts["INFO"]""
 
         ############################################################
         # === Derive Sonar Presentation Variables ===
@@ -205,7 +211,6 @@
           LOW     = "https://sonarcloud.io/project/issues?impactSeverities=LOW&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
           INFO    = "https://sonarcloud.io/project/issues?impactSeverities=INFO&issueStatuses=OPEN,CONFIRMED&id=$projectKey"
         }
-        Write-Host "✅ Counts as extracted from API Call response after fetching total impact severities is: : $impactSeveritiesCounts"
         ############################################################
               # === Generate URLS ===
         ############################################################
@@ -339,7 +344,7 @@
 
                 # now fetch impact-severity-wise and then aggregate it
                   $dirIssuesUrl = "https://sonarcloud.io/api/issues/search?organization=$projectOrg&componentKeys=$projectKey&directories=$dir&issueStatuses=OPEN,CONFIRMED&resolved=false&ps=500"
-                  Write-Output "✅ Calling Directory issues url for: $dir as : $dirIssuesUrl"
+                  # Write-Output "✅ Calling Directory issues url for: $dir as : $dirIssuesUrl"
                   $response = Invoke-WebRequest -Uri $dirIssuesUrl -Headers $headers -Method Get | ConvertFrom-Json
 
                   # Initialize counts
@@ -363,7 +368,7 @@
                     }
                 }
                 $totalIssuesDir = ($counts.BLOCKER + $counts.HIGH + $counts.MEDIUM + $counts.LOW + $counts.INFO)
-                Write-Output "✅ Total issues for : $dir are : $totalIssuesDir"
+                # Write-Output "✅ Total issues for : $dir are : $totalIssuesDir"
                 # Now add to moduleAgg
                   $moduleAgg[$matchedModule]["BLOCKER"] += $counts.BLOCKER
                   $moduleAgg[$matchedModule]["HIGH"]    += $counts.HIGH
@@ -584,6 +589,5 @@
         # --- Emit outputs ---
         "HygieneCheckStatus=$HygieneCheckStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "NextStepsHtml=$NextStepsHtml" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-
 
         ############################################################
