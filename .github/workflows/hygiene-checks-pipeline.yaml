@@ -2,6 +2,10 @@ name: 📊 Hygiene Checks Pipeline
 
 on:
   workflow_dispatch: # Run manually
+
+#  push:
+#    branches:
+#      - main
 permissions:
   actions: write
   contents: read
