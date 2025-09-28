@@ -66,7 +66,7 @@ runs:
     ####################################################
     # EXTRACT WORKFLOW EXECUTION INFO
     ####################################################
-    - name: Extract Commit Info (Windows PowerShell)
+    - name: Compute Execution (Commit + Trigger + Duration) Info
       id: execution_info
       shell: pwsh
       env:
@@ -176,25 +176,90 @@ runs:
           $minuteDesc  = if ($minute -eq "*") { "every minute" } else { "at minute $minute" }
           $hourDesc    = if ($hour   -eq "*") { "every hour" }   else { "at hour $hour" }
         
+          #          function Ordinal($n) {
+          #            if ($n -in 11..13) {
+          #              return "$n`th"
+          #            }
+          #            switch ($n % 10) {
+          #              1 { return "$n`st" }
+          #              2 { return "$n`nd" }
+          #              3 { return "$n`rd" }
+          #              default { return "$n`th" }
+          #            }
+          #          }
+          function Ordinal($n) {
+            if ($n -in 11..13) {
+              return "$n" + "th"
+            }
+            switch ($n % 10) {
+              1 { return "$n" + "st" }
+              2 { return "$n" + "nd" }
+              3 { return "$n" + "rd" }
+              default { return "$n" + "th" }
+            }
+          }
           if ($day -ne "*" -and $weekday -ne "*") {
-            $dayDesc = Pretty $day "day of month"
-            $weekdayDesc = Expand-Weekdays $weekday
-            $dayDesc = "$dayDesc or $weekdayDesc"
+            # $dayDesc = Pretty $day "day of month"
+            #            if ($day -eq "*") {
+            #              $dayDesc = "every day of month"
+            #            } else {
+            #              $ordinalDay = Ordinal([int]$day)
+            #              $dayDesc = "on the $ordinalDay"
+            #            }
+            #            $weekdayDesc = Expand-Weekdays $weekday
+            #            $dayDesc = "$dayDesc or $weekdayDesc"
+            #          }
+            if ($day -eq "*" -or $day -eq "?") {
+              $dayDesc = "every day of month"
+            } else {
+              try {
+                $ordinalDay = Ordinal([int]$day)
+                $dayDesc = "on the $ordinalDay"
+              } catch {
+                $dayDesc = "on day $day"
+              }
+            }
           }
           elseif ($day -eq "*" -and $weekday -ne "*") {
             $dayDesc = "every $(Expand-Weekdays $weekday)"
             $weekdayDesc = ""
           }
           else {
-            $dayDesc = Pretty $day "day of month"
+            # $dayDesc = Pretty $day "day of month"
+            # $dayDesc = if ($day -eq "*") { "every day of month" } else { "on the $(Ordinal $day)" }
+            #            if ($day -eq "*") {
+            #              $dayDesc = "every day of month"
+            #            } else {
+            #              $ordinalDay = Ordinal([int]$day)
+            #              $dayDesc = "on the $ordinalDay"
+            #            }  
+            if ($day -eq "*" -or $day -eq "?") {
+              $dayDesc = "every day of month"
+            } else {
+              try {
+                $ordinalDay = Ordinal([int]$day)
+                $dayDesc = "on the $ordinalDay"
+              } catch {
+                $dayDesc = "on day $day"
+              }
+            }
             $weekdayDesc = if ($weekday -ne "*") { Pretty $weekday "day of week" } else { "" }
           }
         
-          $monthDesc = Pretty $month "month of year"
-        
-          return ($minuteDesc, $hourDesc, $dayDesc, $monthDesc, $weekdayDesc) -join ", " -replace ", $"
+          # $monthDesc = Pretty $month "month of year"
+          $monthNames = @("January","February","March","April","May","June","July","August","September","October","November","December")
+          $monthDesc = if ($month -eq "*") { "every month" } elseif ([int]$month -ge 1 -and [int]$month -le 12) { $monthNames[[int]$month - 1] } else { $month }
+  
+          # return ($minuteDesc, $hourDesc, $dayDesc, $monthDesc, $weekdayDesc) -join ", " -replace ", $"
+          $parts = @($minuteDesc, $hourDesc, $dayDesc, $monthDesc, $weekdayDesc) | Where-Object { $_ -ne "" }
+          return $parts -join ", "
         }
-        
+        function Encode-For-GHA([string]$s) {
+            $s = $s -replace "&", "&amp;"
+            $s = $s -replace "<", "&lt;"
+            $s = $s -replace ">", "&gt;"
+            return $s
+          }
         # The invocation block remains exactly the same
         if ($eventName -eq "schedule") {
           $cronExpr = "${{ github.event.schedule }}"
@@ -202,22 +267,32 @@ runs:
           $explanation = Get-CronExplanation $cronExpr
           Write-Host "✅ [DEBUG] Inside step : execution_info and Explanation of Cron Expression that triggered the workflow is: | $explanation"
           $timezone = "UTC"
-          $triggerInfo="🔔 <strong>Job Triggered By:</strong> <code>Scheduled Run (cron) on branch: ${{ inputs.BRANCH_EXECUTED }}  </code><br>⏰ <strong>Schedule:</strong> <code>$cronExpr</code><br>📝 <strong>Explanation:</strong> $explanation<br>🌍 <strong>Timezone:</strong> $timezone"
-        }
+          # Escape HTML special chars for GitHub Actions safe output
+          
+          # Build triggerInfo (HTML preserved)
+          $triggerInfo = "🔔 <strong>Job Triggered By:</strong> <code>Scheduled Run (cron) on branch: $($env:BRANCH_EXECUTED)</code><br>⏰ <strong>Schedule:</strong> <code>$cronExpr</code><br>📝 <strong>Explanation:</strong> $explanation<br>🌍 <strong>Timezone:</strong> $timezone"
+          # Only encode for GHA if needed when writing to output file
+          $triggerEncodedForGHA = Encode-For-GHA $triggerInfo
+          # $triggerInfo="🔔 <strong>Job Triggered By:</strong> <code>Scheduled Run (cron) on branch: ${{ inputs.BRANCH_EXECUTED }}  </code><br>⏰ <strong>Schedule:</strong> <code>$cronExpr</code><br>📝 <strong>Explanation:</strong> $explanation<br>🌍 <strong>Timezone:</strong> $timezone"
+          }
         
         elseif ($eventName -eq "workflow_dispatch") {
           $triggerInfo="⚡ <strong>Job Triggered By:</strong> <code>$author ($eventName)</code><br>🌿 <strong>Source Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code>"
+          $triggerEncodedForGHA = Encode-For-GHA $triggerInfo
         } elseif ($eventName -eq "push") {
           if ("${{ inputs.SRC_BRANCH }}" -ne "${{ inputs.TGT_BRANCH }}") {
             # PR merged into target branch
             # $triggerInfo="⚡ <strong>Job Triggered By:</strong> <code>PR Merge by $($LAST_COMMIT_AUTHOR)</code><br>🌿 <strong>Source Branch:</strong> <code>$($env:SOURCE_BRANCH)</code><br>🌿 <strong>Target Branch:</strong> <code>$($env:TRIGGER_BRANCH)</code>"
             $triggerInfo="⚡ <strong>Job Triggered By:</strong> <code>PR Merge by $author</code><br>🌿 <strong>Source Branch:</strong> <code>${{ inputs.SRC_BRANCH }}</code><br>🌿 <strong>Target Branch:</strong> <code>${{ inputs.TGT_BRANCH }}</code>"
+            $triggerEncodedForGHA = Encode-For-GHA $triggerInfo
           } else {
             # Direct push
             $triggerInfo="⚡ <strong>Job Triggered By:</strong> <code>Direct push by $author</code><br>🌿 <strong>Branch:</strong> <code>${{ inputs.TGT_BRANCH }}</code>"
+            $triggerEncodedForGHA = Encode-For-GHA $triggerInfo
           }
         } else {
           $triggerInfo="⚡ <strong>Job Triggered By: </strong><code>UNSUPPORTED TRIGGER</code>"
+          $triggerEncodedForGHA = Encode-For-GHA $triggerInfo
         }
         Write-Host "✅ [DEBUG] Inside step : execution_info and TRIGGER_INFO is: | $triggerInfo"
         "SHORT_SHA=$shortSha" >>  $env:GITHUB_OUTPUT
@@ -226,28 +301,28 @@ runs:
         "COMMIT_DATE=$commitDateIST" >> $env:GITHUB_OUTPUT
         "COMMIT_AGO=$ago" >> $env:GITHUB_OUTPUT
         "TRIGGER_INFO=$triggerInfo" >> $env:GITHUB_OUTPUT
-        
-        # Define IST offset
-        $istOffset = [System.TimeSpan]::FromHours(5.5)
-        
-        $startEpoch = [int]$env:START_EPOCH
-        $endEpoch = [int][double]::Parse((Get-Date -UFormat %s))
-        
-        $startDT = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-        $endDT = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-        
-        # Convert to DateTimeOffset and shift to IST
-        $startDT_IST = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
-        $endDT_IST   = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
-        
-        $durationSec = $endEpoch - $startEpoch
-        $mins = [math]::Floor($durationSec / 60)
-        $secs = $durationSec % 60
-        $durationFormatted = "{0}m {1}s" -f $mins, $secs
-        
-        echo "startTime=$startDT_IST" >> $env:GITHUB_OUTPUT
-        echo "endTime=$endDT_IST" >> $env:GITHUB_OUTPUT
-        echo "formattedDuration=$durationFormatted" >> $env:GITHUB_OUTPUT
+        "TIGGER_INFO_ENCODEDFORGHA=$triggerEncodedForGHA" >> $env:GITHUB_OUTPUT
+        #        # Define IST offset
+        #        $istOffset = [System.TimeSpan]::FromHours(5.5)
+        #
+        #        $startEpoch = [int]$env:START_EPOCH
+        #        $endEpoch = [int][double]::Parse((Get-Date -UFormat %s))
+        #
+        #        $startDT = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        #        $endDT = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        #
+        #        # Convert to DateTimeOffset and shift to IST
+        #        $startDT_IST = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
+        #        $endDT_IST   = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
+        #
+        #        $durationSec = $endEpoch - $startEpoch
+        #        $mins = [math]::Floor($durationSec / 60)
+        #        $secs = $durationSec % 60
+        #        $durationFormatted = "{0}m {1}s" -f $mins, $secs
+        #
+        #        echo "startTime=$startDT_IST" >> $env:GITHUB_OUTPUT
+        #        echo "endTime=$endDT_IST" >> $env:GITHUB_OUTPUT
+        #        echo "formattedDuration=$durationFormatted" >> $env:GITHUB_OUTPUT
         #       Write-Host "✅ START DATE-TIME (UTC)| $startDT"
         #       Write-Host "✅ END DATE-TIME (UTC) | $endDT"
         #       Write-Host "✅ START DATE-TIME (IST) | $startDT_IST"

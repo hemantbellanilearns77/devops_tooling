@@ -5,7 +5,7 @@ name: "Compute Metric and Publish Summaries (GITHUB and EMAIL)"
 description: ""
 inputs:
   startTime:
-    description: "Start time from setup-starttime composite"
+    description: "Start time from setup-start time composite"
     required: true
   SKIP_FLAG:
     required: true
@@ -31,7 +31,7 @@ inputs:
   ARTIFACT_URL:
     required: true
     description: ""
-  STAGE_MERGE_SKIPPED:
+  STAGE_VS_MAIN_STATE:
     required: true
     description: "Indicates if stage merge was skipped"
   JOB_STATUS:
@@ -109,8 +109,9 @@ runs:
         coverageStatus: ${{ steps.metrics-and-thresholds.outputs.coverageStatus }}
         coverageBar: ${{ steps.metrics-and-thresholds.outputs.coverageBar }}
         checkstyleCount: ${{ steps.metrics-and-thresholds.outputs.checkstyleCount }}
+        checkstyleStatus: ${{ steps.metrics-and-thresholds.outputs.checkstyleStatus }}
         pmdCount: ${{ steps.metrics-and-thresholds.outputs.pmdCount }}
-        sonarIssuesLegend: ${{ steps.metrics-and-thresholds.outputs.sonarIssuesLegend }}
+        pmdStatus: ${{ steps.metrics-and-thresholds.outputs.pmdStatus }}
         totalSonarFetchedIssues: ${{ steps.metrics-and-thresholds.outputs.totalSonarFetchedIssues }}
         sonarExecutionNote: ${{ steps.metrics-and-thresholds.outputs.sonarExecutionNote }}
         sonarIssuesNote: ${{ steps.metrics-and-thresholds.outputs.sonarIssuesNote }}
@@ -130,6 +131,7 @@ runs:
         sonarInfo: ${{ steps.metrics-and-thresholds.outputs.sonarInfo }}
         sonarInfoUrl: ${{ steps.metrics-and-thresholds.outputs.sonarInfoUrl }}
         sonarInfoEmojiMark: ${{ steps.metrics-and-thresholds.outputs.sonarInfoEmojiMark }}
+        statusLegend: ${{ steps.metrics-and-thresholds.outputs.statusLegend }}
         sonarOpenIssuesDashboardURL: ${{ steps.metrics-and-thresholds.outputs.sonarOpenIssuesDashboardURL }}
         sonarOverallCodeDashBoardURL: ${{ steps.metrics-and-thresholds.outputs.sonarOverallCodeDashBoardURL }}
 
@@ -148,5 +150,6 @@ runs:
         TRIGGER_INFO: ${{ steps.execution-info.outputs.TRIGGER_INFO }}
         COMMIT_DATE: ${{ steps.execution-info.outputs.COMMIT_DATE }}
         startTime: ${{ steps.execution-info.outputs.startTime }}
+        START_EPOCH: ${{ inputs.startTime }}
         endTime: ${{ steps.execution-info.outputs.endTime }}
         formattedDuration: ${{ steps.execution-info.outputs.formattedDuration }}

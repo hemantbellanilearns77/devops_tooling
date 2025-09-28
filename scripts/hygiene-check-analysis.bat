@@ -1,9 +1,9 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-REM echo =================================================================================
-REM echo     🧹 All Hygiene Workflow — Checkstyle then PMD then JaCoCo then SonarCloud
-REM echo =================================================================================
+echo =================================================================================
+echo     🧹 All Hygiene Workflow — Checkstyle then PMD then JaCoCo then SonarCloud
+echo =================================================================================
 set "executionEnv=%~1"
 if /i "%executionEnv%"=="githubactions" goto :github
 if /i "%executionEnv%"=="local" goto :local
@@ -36,7 +36,7 @@ set "originalDir=%CD%"
 		if /I "%%~A"=="--skip-jacoco" set "skip_jacoco=true"
 		if /I "%%~A"=="--skip-sonar" set "skip_sonar=true"
 	)
-
+    echo skip_sonar is %skip_sonar%
 	:: === Generate Timestamp ===
 	for /f %%i in ('powershell -command "Get-Date -Format yyyy-MM-dd--HH-mm-ss"') do set timestamp=%%i
 
@@ -106,8 +106,7 @@ set "originalDir=%CD%"
 		REM echo ⏭️ Skipping JaCoCo... because skip_sonar was true 
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
-	REM echo --------------------------------------------------- 
-	call scripts\sonar-scan.bat githubactions
+	REM echo ---------------------------------------------------
 	:: === Step 4: SonarCloud ===
 	if "%skip_sonar%"=="false" (
 		echo 🚀 Step 4: Running SonarCloud scan... >> "%hygieneLogPath%"
@@ -117,7 +116,7 @@ set "originalDir=%CD%"
 		REM echo ✅ SonarCloud scan completed.
 	) else (
 		echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true  >> "%hygieneLogPath%"
-		REM echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true  
+		echo ⏭️ Skipping SonarCloud scan... because skip_sonar was true
 	)
 	echo --------------------------------------------------- >> "%hygieneLogPath%"
 	REM echo --------------------------------------------------- 

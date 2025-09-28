@@ -96,13 +96,13 @@
 
             if ($actualCoverage -ge 90.00) {
                 $emoji = "🟢"
-                $note  = "(GREAT)"
+                $note  = "(EXCELLENT)"
             } elseif ($actualCoverage -ge $minNeeded -and $actualCoverage -le 89.99) {
                 $emoji = "🟡"
-                $note  = "(NEARING THRESHOLD)"
+                $note  = "(WITHIN THRESHOLD - MONITOR)"
             } else {
                 $emoji = "🔴"
-                $note  = "(OVERBOARD)"
+                $note  = "(BELOW THRESHOLD – ACTION REQUIRED)"
             }
             return "/ 100% $emoji $note"
         }
@@ -214,31 +214,37 @@
         ############################################################
               # === Generate URLS ===
         ############################################################
-         $sonarOverallCodeDashBoardUrl = "https://sonarcloud.io/summary/overall?id=$projectKey&branch=$branch"
-         $sonarOpenIssuesDashboardUrl= "https://sonarcloud.io/project/issues?issueStatuses=OPEN%2CCONFIRMED&id=$projectKey"
+        $sonarOverallCodeDashBoardUrl = "https://sonarcloud.io/summary/overall?id=$projectKey&branch=$branch"
+        $sonarOpenIssuesDashboardUrl= "https://sonarcloud.io/project/issues?issueStatuses=OPEN%2CCONFIRMED&id=$projectKey"
 
-        function FormatSonarStatus($count, $maxAllowed, $severity) {
+        function FormatViolationStatus($count, $maxAllowed) {
+        # function FormatViolationStatus($count, $maxAllowed, $issueLabel)
             if ($count -eq 0) {
                 $emoji = "✅"
-                $note  = "(GREAT)"
+                $note  = "(EXCELLENT)"
             } elseif ($count -le $maxAllowed) {
                 $emoji = "🟡"
-                $note  = "(NEARING THRESHOLD)"
+                $note  = "(WITHIN THRESHOLD - MONITOR)"
             } else {
                 $emoji = "🔴"
-                $note  = "(OVERBOARD)"
+                $note  = "(EXCEEDS THRESHOLD – ACTION REQUIRED)"
             }
             return " / $maxAllowed $emoji $note"
-            #return "$severity Issues: $count / $maxAllowed $emoji $note"
+            #return "$issueLabel: $count / $maxAllowed $emoji $note"
         }
 
 
-        $sonarBlockerStatus = FormatSonarStatus $blocker $env:BLOCKER_MAX "🟥 BLOCKER"
-        $sonarHighStatus    = FormatSonarStatus $high    $env:HIGH_MAX    "🟧 HIGH"
-        $sonarMediumStatus  = FormatSonarStatus $medium  $env:MEDIUM_MAX  "🟨 MEDIUM"
-        $sonarLowStatus     = FormatSonarStatus $low     $env:LOW_MAX     "🟦 LOW"
-        $sonarInfoStatus    = FormatSonarStatus $info    $env:INFO_MAX    "ℹ️ INFO"
-        $sonarIssuesLegend = "Legend: ✅ = Excellent / No issues, 🟡 = Monitor Closely (NEARING THRESHOLD), 🔴 = Immediate Action Required (THRESHOLD BREACHED)"
+        $sonarBlockerStatus = FormatViolationStatus $blocker $env:BLOCKER_MAX
+        $sonarHighStatus    = FormatViolationStatus $high    $env:HIGH_MAX
+        $sonarMediumStatus  = FormatViolationStatus $medium  $env:MEDIUM_MAX
+        $sonarLowStatus     = FormatViolationStatus $low     $env:LOW_MAX
+        $sonarInfoStatus    = FormatViolationStatus $info    $env:INFO_MAX
+        # --- Decorate Violations ---
+        $checkstyleStatus = FormatViolationStatus $checkstyleViolations $env:CHECKSTYLE_MAX_VIOLATIONS
+        $pmdStatus = FormatViolationStatus $pmdViolations $env:PMD_MAX_VIOLATIONS
+        Write-Output "✅ checkstyleStatus: '$checkstyleStatus'"
+        Write-Output "✅ pmdStatus: '$pmdStatus'"
+        $statusLegend = "Legend: ✅ = EXCELLENT ( No Next Steps ), 🟡 = WITHIN / NEARING THRESHOLD (Monitor Closely ), 🔴 = THRESHOLD BREACHED ( Immediate Action Required )"
 
 
         ###############################################################################
@@ -294,13 +300,6 @@
                   # Write-Output ("   Key = {0}, Value = {1}" -f $_.Key, ($val | ConvertTo-Json -Compress))
                 }
               }
-           <# Debug: Print out current aggregate state
-           Write-Output "----- Current Module Aggregates -----"
-           foreach ($moduleName in $moduleAgg.Keys) {
-                $bucket = $moduleAgg[$moduleName]
-                Write-Output ("Module: {0} | BLOCKER={1}, HIGH={2}, MEDIUM={3}, LOW={4}, INFO={5}" -f `
-                               $moduleName, $bucket.BLOCKER, $bucket.HIGH, $bucket.MEDIUM, $bucket.LOW, $bucket.INFO)
-           } #>
            # Write-Output "--------------------------------------"
           }
 
@@ -415,20 +414,30 @@
         # Step 4: Export results as an output variable for email step
         # Example: "udemy_lpa_javamasterclass:0,2,15,5,0;misc_utils:0,1,8,4,0"
         $emailModuleSevAggTable=""
-        $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
+         $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
             $b = $moduleAgg[$_]
-            "${_}:$(Mark $b.BLOCKER),$(Mark $b.HIGH),$(Mark $b.MEDIUM),$(Mark $b.LOW),$(Mark $b.INFO)"
+            "${_}:$($b.BLOCKER) $(FormatViolationStatus $b.BLOCKER $env:BLOCKER_MAX) ,$($b.HIGH) $(FormatViolationStatus $b.HIGH $env:HIGH_MAX), $($b.MEDIUM) $(FormatViolationStatus $b.MEDIUM $env:MEDIUM_MAX),$($b.LOW) $(FormatViolationStatus $b.LOW $env:LOW_MAX),$($b.INFO) $(FormatViolationStatus $b.INFO $env:INFO_MAX)"
         }) -join ";"
+<#         $emailModuleSevAggBreakdown = ($moduleAgg.Keys | ForEach-Object {
+            $b = $moduleAgg[$_]
+            "${_}:" +
+            "$($b.BLOCKER) $(FormatViolationStatus $b.BLOCKER $env:BLOCKER_MAX)," +
+            "$($b.HIGH) $(FormatViolationStatus $b.HIGH $env:HIGH_MAX)," +
+            "$($b.MEDIUM) $(FormatViolationStatus $b.MEDIUM $env:MEDIUM_MAX)," +
+            "$($b.LOW) $(FormatViolationStatus $b.LOW $env:LOW_MAX)," +
+            "$($b.INFO) $(FormatViolationStatus $b.INFO $env:INFO_MAX)"
+        }) -join ";" #>
 
-        $emailModuleSevAggTable = "<table border='1' cellpadding='5' cellspacing='0'>"
-        $emailModuleSevAggTable += "<tr><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
+        $emailModuleSevAggTable = "<table border='1' cellpadding='5' cellspacing='0' style='border-collapse:collapse; table-layout:fixed; width:100%; max-width:600px;'>"
+        $emailModuleSevAggTable += "<tr style='background:#f0f0f0; text-align:center;'><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
+        #$emailModuleSevAggTable += "<tr><th>Module</th><th>BLOCKER</th><th>HIGH</th><th>MEDIUM</th><th>LOW</th><th>INFO</th></tr>"
         foreach ($entry in $emailModuleSevAggBreakdown -split ";") {
             $parts = $entry -split ":"
             if ($parts.Count -eq 2) {
                 $module = $parts[0]
                 $counts = $parts[1] -split ","
                 $emailModuleSevAggTable += "<tr>"
-                $emailModuleSevAggTable += "<td>$module</td>"
+                $emailModuleSevAggTable += "<td style='word-break:break-word;'>$module</td>"
                 foreach ($c in $counts) {
                     $emailModuleSevAggTable += "<td align='center'>$c</td>"
                 }
@@ -446,7 +455,8 @@
           $githubModuleSevAggTable += "|--------|------------|---------|----------|--------|--------|$nl"
           foreach ($mod in $moduleAgg.Keys | Sort-Object) {
               $b = $moduleAgg[$mod]
-              $githubModuleSevAggTable += "| **$mod** | $(Mark $b.BLOCKER) | $(Mark $b.HIGH) | $(Mark $b.MEDIUM) | $(Mark $b.LOW) | $(Mark $b.INFO) |$nl"
+              # $githubModuleSevAggTable += "| **$mod** | $(Mark $b.BLOCKER) | $(Mark $b.HIGH) | $(Mark $b.MEDIUM) | $(Mark $b.LOW) | $(Mark $b.INFO) |$nl"
+              $githubModuleSevAggTable += "| **$mod** |  $($b.BLOCKER) $(FormatViolationStatus $b.BLOCKER $env:BLOCKER_MAX)  | $($b.HIGH) $(FormatViolationStatus $b.HIGH $env:HIGH_MAX) | $($b.MEDIUM) $(FormatViolationStatus $b.MEDIUM $env:MEDIUM_MAX) | $($b.LOW) $(FormatViolationStatus $b.LOW $env:LOW_MAX) | $($b.INFO) $(FormatViolationStatus $b.INFO $env:INFO_MAX)  |$nl"
           }
       }
 
@@ -457,10 +467,11 @@
         $NextStepsHtml = ""
         $sonarHasNextSteps=$false
 
+
         # --- Convert coverage safely ---
         $coverageValue = [double]($sonarCoverage -replace '[^0-9\.]', '')
 
-         # --- Aggregate violations ---
+        # --- Aggregate violations ---
         if ($totalViolations -gt [int]$env:CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS) {
             $passed = $false
             $NextStepsHtml += "<li>Total code violations exceed allowed maximum ($totalCodeViolations > $($env:CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS)).</li>"
@@ -539,7 +550,9 @@
         # === Outputs for GITHUB SUMMARY and Email ===
         ############################################################
         "checkstyleCount=$checkstyleViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "checkstyleStatus=$checkstyleStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "pmdCount=$pmdViolations" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "pmdStatus=$pmdStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
         "sonarCoverage=$sonarCoverage %" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "coverageStatus=$coverageStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -571,6 +584,7 @@
         "sonarInfo=$info" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarInfoEmojiMark=$sonarInfoStatus" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarInfoURL=$($severityLinks.INFO)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+        "statusLegend=$statusLegend" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
         "sonarOverallCodeDashBoardURL=$sonarOverallCodeDashBoardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
         "sonarOpenIssuesDashboardURL=$sonarOpenIssuesDashboardUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Append

@@ -22,7 +22,13 @@ inputs:
   checkstyleCount:
     required: true
     description: ""
+  checkstyleStatus:
+    required: true
+    description: ""
   pmdCount:
+    required: true
+    description: ""
+  pmdStatus:
     required: true
     description: ""
   sonarExecutionNote:
@@ -79,6 +85,9 @@ inputs:
   sonarInfoEmojiMark:
     required: true
     description: ""
+  statusLegend:
+    required: true
+    description: ""
   sonarOpenIssuesDashboardURL:
     required: true
     description: ""
@@ -109,6 +118,9 @@ inputs:
   startTime:
     required: true
     description: ""
+  START_EPOCH:
+    required: true
+    description: ""
   endTime:
     required: true
     description: ""
@@ -119,9 +131,6 @@ inputs:
     required: true
     description: ""
   STAGE_VS_MAIN_STATE:
-    required: true
-    description: ""
-  sonarIssuesLegend:
     required: true
     description: ""
   GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE:
@@ -175,6 +184,7 @@ runs:
         $sonarCoverage = "${{ inputs.sonarCoverage }}"
         $coverageStatus = "${{ inputs.coverageStatus }}"
         $coverageBar="${{ inputs.coverageBar }}"
+        $lastCommitURL="https://github.com/${{ github.repository }}/commit/${{ inputs.FULL_SHA }}"
         
          ############################################################
                    # === Write Overall Table ===
@@ -187,19 +197,55 @@ runs:
          echo "|------------------------- |-----------|" >> $env:GITHUB_STEP_SUMMARY
          echo "| 📈 Code Coverage (Sonar)    | $sonarCoverage $coverageStatus |" >> $env:GITHUB_STEP_SUMMARY
          echo "| 🎯 Coverage Visual          | <code>$coverageBar</code> |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| 📝 Checkstyle Violations    | $checkstyleViolations |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| 🔍 PMD Violations           | $pmdViolations |" >> $env:GITHUB_STEP_SUMMARY00
+         echo "| 📝 Checkstyle Violations    | $checkstyleViolations ${{ inputs.checkstyleStatus }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🔍 PMD Violations           | $pmdViolations ${{ inputs.pmdStatus }} |" >> $env:GITHUB_STEP_SUMMARY
          echo "| 🗂 SonarCloud                | Execution: <code>${{inputs.sonarExecutionNote}}</code><br/>Issues: <code>${{inputs.sonarIssuesNote}}</code><br/>Last Analysis: <code>${{inputs.lastSonarAnalysis }}</code> |" >> $env:GITHUB_STEP_SUMMARY
          echo "| 🟥 BLOCKER                   | [${{ inputs.sonarBlocker }}](${{ inputs.sonarBlockerUrl }}) ${{ inputs.sonarBlockerEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
          echo "| 🟧 HIGH                      | [${{ inputs.sonarHigh }}](${{ inputs.sonarHighUrl }}) ${{ inputs.sonarHighEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| 🟨 MEDIUM                    | [[${{ inputs.sonarMedium }}](${{ inputs.sonarMediumUrl }}) ${{ inputs.sonarMediumEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| 🟦 LOW                       | [[${{ inputs.sonarLow }}](${{ inputs.sonarLowUrl }}) ${{ inputs.sonarLowEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| ℹ INFO                       | [[${{ inputs.sonarInfo }}](${{ inputs.sonarInfoUrl }}) ${{ inputs.sonarInfoEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
-         echo "| Legend                       | ${{ inputs.sonarIssuesLegend }} |" >> $env:GITHUB_STEP_SUMMARY
-         echo "🌐 [View SonarCloud Overall Code Dashboard](${{ inputs.sonarOverallCodeDashBoardUrl }})" >> $env:GITHUB_STEP_SUMMARY
-         echo "🌐 [View SonarCloud Issues Breakdown Dashboard](${{ inputs.sonarOpenIssuesDashboardUrl }})" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟨 MEDIUM                    | [${{ inputs.sonarMedium }}](${{ inputs.sonarMediumUrl }}) ${{ inputs.sonarMediumEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🟦 LOW                       | [${{ inputs.sonarLow }}](${{ inputs.sonarLowUrl }}) ${{ inputs.sonarLowEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| ℹ INFO                      | [${{ inputs.sonarInfo }}](${{ inputs.sonarInfoUrl }}) ${{ inputs.sonarInfoEmojiMark }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| Legend                       | ${{ inputs.statusLegend }} |" >> $env:GITHUB_STEP_SUMMARY
+         echo "| 🔗 Key Links | - 🌐 [SonarCloud – Overall Code Dashboard](${{ inputs.sonarOverallCodeDashBoardUrl }}) <br/> - 🌐 [SonarCloud – Issues Breakdown Dashboard](${{ inputs.sonarOpenIssuesDashboardUrl }}) <br/> - 🌐 [Last Commit Here:]($lastCommitURL) |" >> $env:GITHUB_STEP_SUMMARY
+  
          echo "${{ inputs.GITHUB_SUMMARY_MODULE_SEV_AGG_TABLE }}" >> $env:GITHUB_STEP_SUMMARY
-    
+
+
+    ####################################################
+          # CALCULATE EXECUTION TIMINGS
+    ####################################################
+    - name: Compute Execution (Commit + Trigger + Duration) Info
+      id: execution_timings
+      shell: pwsh
+      env:
+        START_EPOCH: ${{ inputs.START_EPOCH }}
+      run: |
+        # Define IST offset
+        $istOffset = [System.TimeSpan]::FromHours(5.5)
+        
+        $startEpoch = [int]$env:START_EPOCH
+        $endEpoch = [int][double]::Parse((Get-Date -UFormat %s))
+        
+        $startDT = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        $endDT = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+        
+        # Convert to DateTimeOffset and shift to IST
+        $startDT_IST = [System.DateTimeOffset]::FromUnixTimeSeconds($startEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
+        $endDT_IST   = [System.DateTimeOffset]::FromUnixTimeSeconds($endEpoch).ToOffset($istOffset).ToString("yyyy-MM-dd HH:mm:ss")
+        
+        $durationSec = $endEpoch - $startEpoch
+        $mins = [math]::Floor($durationSec / 60)
+        $secs = $durationSec % 60
+        $durationFormatted = "{0}m {1}s" -f $mins, $secs
+        
+        echo "startTime=$startDT_IST" >> $env:GITHUB_OUTPUT
+        echo "endTime=$endDT_IST" >> $env:GITHUB_OUTPUT
+        echo "formattedDuration=$durationFormatted" >> $env:GITHUB_OUTPUT
+        #       Write-Host "✅ START DATE-TIME (UTC)| $startDT"
+        #       Write-Host "✅ END DATE-TIME (UTC) | $endDT"
+        #       Write-Host "✅ START DATE-TIME (IST) | $startDT_IST"
+        #       Write-Host "✅ END DATE-TIME (IST) | $endDT_IST"
+        #       Write-Host "✅ FORMATTED DURATION | $durationFormatted"
 
     ##########################
     # Email Success Summary
@@ -211,9 +257,10 @@ runs:
         server_port: ${{ env.SMTP_SERVER_PORT }}
         username: ${{ env.SMTP_USER }}
         password: ${{ env.SMTP_PASS }}
+#        subject: >-
+#          ${{ inputs.HygieneCheckStatus }} | ${{ github.workflow }} | ${{ github.repository }} | Branch: ${{ inputs.BRANCH_EXECUTED }} | Run #${{ github.run_id }} | Duration: ${{ steps.execution_timings.outputs.formattedDuration }} | Coverage Status: ${{ inputs.sonarCoverage }} ${{ inputs.coverageStatus }}
         subject: >-
-          ${{ inputs.HygieneCheckStatus }} | ${{ github.workflow }} | ${{ github.repository }} | Branch: ${{ inputs.BRANCH_EXECUTED }} | Run #${{ github.run_id }} | Duration: ${{ inputs.formattedDuration }}
-            ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '(⚠️ Coverage Below Threshold)' || '' }}
+           ${{ inputs.HygieneCheckStatus }} | ${{ github.workflow }} | Run #${{ github.run_number }} | Repository: ${{ github.repository }} | Branch: ${{ inputs.BRANCH_EXECUTED }} | Duration: ${{ steps.execution_timings.outputs.formattedDuration }}
         to: ${{ env.EMAIL_RECIPIENT }}
         from: GitHub Hygiene Bot <${{ env.EMAIL_RECIPIENT }}>
 
@@ -236,25 +283,34 @@ runs:
                           </span>
                         </h2>
                         <p style="margin:0 0 12px 0;">
-                          <strong>Repository:</strong> <code>${{ github.repository }}</code><br/>
-                          <strong>Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
-                          <strong>Stage ↔ Main state:</strong> <code>${{ inputs.STAGE_VS_MAIN_STATE }}</code><br/>
-                          <strong>Duration:</strong> <code>${{ inputs.formattedDuration }}</code>
-                        </p>
+                            <strong>Repository:</strong> <code>${{ github.repository }}</code><br/>
+                            <strong>Branch:</strong> <code>${{ inputs.BRANCH_EXECUTED }}</code><br/>
+                            <strong>Stage ↔ Main state:</strong> <code>${{ inputs.STAGE_VS_MAIN_STATE }}</code><br/>
+                            <strong>Run:</strong>
+                            <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="color:#1a5276; text-decoration:none;">#${{ github.run_number }}</a>
+                            <br/>
+                            <strong>Job Execution Status:</strong>
+                            <span style="color:${{ job.status == 'success' && 'green' || 'red' }};">
+                            <code style="font-family:Calibri, sans-serif; font-size:12pt; font-weight:bold;">
+                            ${{ job.status }}
+                            </code>
+                            </span><br/>
+                            <strong>Duration:</strong>
+                            <code>${{ steps.execution_timings.outputs.formattedDuration }}</code>
+                          </p>
 
                         <p style="margin:12px 0; font-style:italic; color:#5d6d7e;">
-                           ${{ inputs.sonarIssuesLegend }}
+                           ${{ inputs.statusLegend }}
                         </p>
-
+                        
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📊 Summary</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
                           <li style="margin-bottom:6px;"><b>📈 Code Coverage:</b> 
-                            ${{ inputs.sonarCoverage }}
-                            ${{ inputs.sonarCoverage && inputs.sonarCoverage < env.JACOCO_MIN_COVERAGE && '<span style="color:red;">(Below Threshold)</span>' || '<span style="color:green;">(OK)</span>' }}
+                            ${{ inputs.sonarCoverage }} ${{ inputs.coverageStatus }}
                           </li>
                           <li style="margin-bottom:6px;">🎯 <b>Coverage Visual:</b> <code>${{ inputs.coverageBar }}</code></li>
-                          <li style="margin-bottom:6px;">📝 <b>Checkstyle Violations:</b> <code>${{ inputs.checkstyleCount }}</code></li>
-                          <li style="margin-bottom:6px;">🔍 <b>PMD Violations:</b> <code>${{ inputs.pmdCount }}</code></li>
+                          <li style="margin-bottom:6px;">📝 <b>Checkstyle Violations:</b> <code>${{ inputs.checkstyleCount }}</code> ${{ inputs.checkstyleStatus }}</li>
+                          <li style="margin-bottom:6px;">🔍 <b>PMD Violations:</b> <code>${{ inputs.pmdCount }}</code>${{ inputs.pmdStatus }}</li>
                           <li style="margin-bottom:6px;">🗂 <b>SonarCloud:</b>
                             <ul style="margin:6px 0 12px 18px; padding:0;">
                               <li style="margin-bottom:6px;">Execution: <code>${{ inputs.sonarExecutionNote }}</code></li>
@@ -283,7 +339,8 @@ runs:
                           <li style="margin-bottom:6px;"><a href="${{ inputs.sonarOpenIssuesDashboardURL }}" style="color:#1a5276; text-decoration:none;">SonarCloud Open Issues - Impact Severity Breakdown</a></li>
                           <li style="margin-bottom:6px;"><a href="https://github.com/${{ github.repository }}/commit/${{ inputs.FULL_SHA }}" style="color:#1a5276; text-decoration:none;">View Last Commit (SHA=${{ inputs.SHORT_SHA }})</a></li>
                           <li style="margin-bottom:6px;"><a href="${{ inputs.ARTIFACT_URL }}" style="color:#1a5276; text-decoration:none;">Download Hygiene Reports (Run: ${{ github.run_id }})</a></li>
-                        </ul>
+                          <li style="margin-bottom:6px;"><b>Run Details:</b><a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" style="color:#1a5276; text-decoration:none;">#${{ github.run_number }}</a></li>
+                          <li style="margin-bottom:6px;"><a href="https://github.com/${{ github.repository }}/actions" style="color:#1a5276; text-decoration:none;">GitHub Actions Dashboard</a></li>                        </ul>
 
                         <h3 style="color:#117864; margin-top:24px; border-bottom:1px solid #e6e6e6; padding-bottom:3px;">📌 Next Steps</h3>
                         <ul style="margin:6px 0 12px 18px; padding:0;">
@@ -301,11 +358,12 @@ runs:
                              </span>
                           </li>
                           <li style="margin-bottom:6px;">Triggered by: <code>${{ inputs.TRIGGER_INFO }}</code></li>
-                          <li style="margin-bottom:6px;">Last Commit / PR Approved and Merged, By: <code>${{ inputs.COMMIT_AUTHOR }}</code></li>
-                          <li style="margin-bottom:6px;">Last Commit / PR Merge Approval, Message: <code>${{ inputs.COMMIT_MSG }}</code></li>
-                          <li style="margin-bottom:6px;">Last Commit / PR Approval, Date: <code>${{ inputs.COMMIT_DATE }} (IST)</code></li>
-                          <li style="margin-bottom:6px;">Job Duration: <code>${{ inputs.formattedDuration }}</code></li>
-                          <li style="margin-bottom:6px;">Start: <code>${{ inputs.startTime }}</code> | End: <code>${{ inputs.endTime }}</code></li>
+                          <li style="margin-bottom:6px;">Author of Last Commit / Approver of Last PR: <code>${{ inputs.COMMIT_AUTHOR }}</code></li>
+                          <li style="margin-bottom:6px;">Last Commit Message / PR Approval & Merge Message: <code>${{ inputs.COMMIT_MSG }}</code></li>
+                          <li style="margin-bottom:6px;">Last Commit / PR Approval & Merge, Date: <code>${{ inputs.COMMIT_DATE }} (IST)</code></li>
+                          <li style="margin-bottom:6px;">Job Duration: <code>${{ steps.execution_timings.outputs.formattedDuration }}</code></li>
+                          <li style="margin-bottom:6px;">Start: <code>${{ steps.execution_timings.outputs.startTime }}</code> | End: <code>${{ steps.execution_timings.outputs.endTime }}</code></li>
+                         
                         </ul>
                         <p style="margin-top:20px; color:#5d6d7e; font-style:italic;">
                           🕒 All times reported in IST.<br/>

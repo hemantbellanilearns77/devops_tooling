@@ -2,10 +2,6 @@ name: 📊 Hygiene Checks Pipeline
 
 on:
   workflow_dispatch: # Run manually
-
-#  push:
-#    branches:
-#      - main
 permissions:
   actions: write
   contents: read
@@ -13,13 +9,23 @@ jobs:
   pre-setup-job:
     runs-on: windows-latest
     outputs:
+      startTime: ${{ steps.start_time.outputs.startTime }}
       pre-setup-decision: ${{ steps.pre-setup.outputs.pre-setup-decision }}
       pre-setup-decision-reason: ${{ steps.pre-setup.outputs.pre-setup-decision-reason }}
       STAGE_VS_MAIN_STATE: ${{ steps.pre-setup.outputs.STAGE_VS_MAIN_STATE }}
       last-commit-msg: ${{ steps.pre-setup.outputs.LAST_COMMIT_MSG }}
       last-commit-author: ${{ steps.pre-setup.outputs.LAST_COMMIT_AUTHOR }}
     steps:
-        # Checkout Code
+      # 1. Capture start time
+      - name: Capture Start Time
+        id: start_time
+        shell: bash
+        run: |
+          startTime=$(date +%s)
+          echo "🕒 Captured Start Time (epoch seconds): $startTime"
+          echo "startTime=$startTime" >> $GITHUB_OUTPUT
+
+      # 2. Checkout Code
       - name: Checkout default branch
         uses: actions/checkout@v4
         with:
@@ -61,9 +67,9 @@ jobs:
       JACOCO_MIN_COVERAGE: 75        # Require at least 75% coverage
 
       # --- Aggregate Violations ---
-      CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS: 3969  # Maximum total violations (Checkstyle + PMD)
-      CHECKSTYLE_MAX_VIOLATIONS: 3969            # Max Checkstyle violations per module
-      PMD_MAX_VIOLATIONS: 63                    # Max PMD violations per module
+      CHECKSTYLE_PMD_MAX_TOTAL_VIOLATIONS: 567  # Maximum total violations (Checkstyle + PMD)
+      CHECKSTYLE_MAX_VIOLATIONS: 441            # Max Checkstyle violations per module
+      PMD_MAX_VIOLATIONS: 126                    # Max PMD violations per module
 
       # --- SonarCloud Severity Thresholds ---
       BLOCKER_MAX: 10      # Any Blocker fails hygiene
@@ -116,7 +122,7 @@ jobs:
         id: publish-githubsummary-and-sendemail
         uses: ./.github/actions/compute-and-publish-summary
         with:
-          startTime: ${{ steps.setup.outputs.startTime }}
+          startTime: ${{ needs.pre-setup-job.outputs.startTime }}
           SKIP_FLAG: ${{ steps.setup.outputs.SKIP_FLAG }}
           COMMIT_MSG: ${{ steps.setup.outputs.COMMIT_MSG }}
           COMMIT_AUTHOR: ${{ steps.setup.outputs.COMMIT_AUTHOR }}
@@ -177,6 +183,7 @@ jobs:
           id: cancel-hygiene
           uses: ./.github/actions/cancel-hygiene
           with:
+            startTime: ${{ needs.pre-setup-job.outputs.startTime }}
             reason: ${{ needs.pre-setup-job.outputs.pre-setup-decision-reason }}
             last-commit-msg: ${{ needs.pre-setup-job.outputs.last-commit-msg }}
             last-commit-author: ${{ needs.pre-setup-job.outputs.last-commit-author }}
@@ -184,6 +191,5 @@ jobs:
             branch: ${{ github.ref_name }}
             run-id: ${{ github.run_id }}
             repository: ${{ github.repository }}
-
           env:
             GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
